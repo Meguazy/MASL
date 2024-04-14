@@ -23,10 +23,12 @@ class AgentMovementApp:
 
     def create_agent_markers(self):
         colors = self.get_agent_colors()
-        for agent_id, agent_type, x, y in self.movements:
-            marker_color = colors[agent_type]
-            marker = self.canvas.create_oval(x * 50, y * 50, (x + 1) * 50, (y + 1) * 50, fill=marker_color)
-            self.agent_markers[agent_id] = marker
+        for agent_type in self.agent_types:
+            print(agent_type)
+            marker_color = colors[str(agent_type)]
+            marker = self.canvas.create_oval(0, 0, 10, 10, fill=marker_color)  # Create marker for each agent type
+            self.agent_markers[agent_type] = marker
+            print(self.agent_markers)
 
     def animate_movement(self):
         self.create_agent_markers()
