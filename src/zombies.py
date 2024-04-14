@@ -260,7 +260,7 @@ class Model:
 
         self.neurons = Neurons()
         #loggers = logging.create_loggers(self.neurons, op=MPI.SUM, rank=self.rank)
-        self.data_set = logging.TabularLogger(self.comm, params['counts_file'], ["tick", "x", "y", "rank", "agent_type"], delimiter=",")
+        self.data_set = logging.TabularLogger(self.comm, params['counts_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
 
         world_size = comm.Get_size()
         self.occupied_coords = []
@@ -342,12 +342,12 @@ class Model:
     #     self.move(z, pt.x, pt.y)
 
     def log_counts(self, tick):
-        num_agents = self.context.size([Neuron.TYPE])#, Cytokine.TYPE])
+        #num_agents = self.context.size([Neuron.TYPE])#, Cytokine.TYPE])
         #self.counts.zombies = num_agents[Cytokine.TYPE]
         
         for n in self.context.agents():
             pt = self.grid.get_location(n)
-            self.data_set.log_row(tick, pt.x, pt.y, self.rank, n.save()[0][1])
+            self.data_set.log_row(tick, n.save()[0][0], n.save()[0][1], pt.x, pt.y, self.rank)
             print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
                     
         #if tick % 10 == 0:
