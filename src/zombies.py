@@ -324,7 +324,6 @@ class Model:
         #     dead, alpha, pt = n.step()
         #     if dead:
         #         dead_humans.append((n, pt))
-
         # for h, pt in dead_humans:
         #     model.remove_agent(h)
         #     model.add_zombie(pt)
