@@ -21,6 +21,7 @@ from repast4py.space import BorderType, OccupancyType
 from cytokine import Cytokine
 from levodopa import Levodopa
 from microglia import Microglia
+from astrocyte import Astrocyte
 
 model = None
 
@@ -117,6 +118,13 @@ def restore_agent(agent_data: Tuple):
             return agent_cache[uid]
         else:
             c = Microglia(uid[0], uid[2])
+            agent_cache[uid] = c
+            return c
+    elif uid[1] == Astrocyte.TYPE:
+        if uid in agent_cache:
+            return agent_cache[uid]
+        else:
+            c = Astrocyte(uid[0], uid[2])
             agent_cache[uid] = c
             return c
 
@@ -258,27 +266,37 @@ class Model:
         self.occupied_coords = []
         random.init(self.rank)
 
+        # Adding Neurons to the environment
         total_neuron_count = int((params['world.width'] * params['world.height']) * params['neuron.perc'] / 100)
         pp_neuron_count = int(total_neuron_count / world_size)
         if self.rank < total_neuron_count % world_size:
             pp_neuron_count += 1
         self.add_agents(pp_neuron_count, Neuron.TYPE)
 
+        # Adding Microglia to the environment
         total_microglia_count = int((params['world.width'] * params['world.height']) * params['microglia.perc'] / 100)
         pp_microglia_count = int(total_microglia_count / world_size)
         if self.rank < total_microglia_count % world_size:
             pp_microglia_count += 1
         self.add_agents(pp_microglia_count, Microglia.TYPE)
+
+        # Adding Astrocytes to the environment
+        total_astrocyte_count = int((params['world.width'] * params['world.height']) * params['astrocyte.perc'] / 100)
+        pp_astrocyte_count = int(total_astrocyte_count / world_size)
+        if self.rank < total_astrocyte_count % world_size:
+            pp_astrocyte_count += 1
+        self.add_agents(pp_astrocyte_count, Astrocyte.TYPE)
     
     def add_agents(self, pp_count, type):
         local_bounds = self.grid.get_local_bounds()
         ag = None
         for i in range(pp_count):
-            
             if type == Neuron.TYPE:
                 ag = Neuron(i, self.rank)
             elif type == Microglia.TYPE:
                 ag = Microglia(i, self.rank)
+            elif type == Astrocyte.TYPE:
+                ag = Astrocyte(i, self.rank)
             
             x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
             y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
