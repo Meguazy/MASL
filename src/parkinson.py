@@ -1,6 +1,3 @@
-import sys
-import math
-from venv import logger
 import numpy as np
 from typing import Dict, Tuple
 from mpi4py import MPI
@@ -14,7 +11,6 @@ from repast4py import core, space, schedule, logging, random
 from repast4py import context as ctx
 from repast4py.parameters import create_args_parser, init_params
 
-from repast4py.space import ContinuousPoint as cpt
 from repast4py.space import DiscretePoint as dpt
 from repast4py.space import BorderType, OccupancyType
 
@@ -22,6 +18,7 @@ from cytokine import Cytokine
 from levodopa import Levodopa
 from microglia import Microglia
 from astrocyte import Astrocyte
+from tcell import TCell
 
 model = None
 
@@ -80,10 +77,8 @@ class GridNghFinder:
         # This 3 element array format is necessary to reset the repast4py.space.DiscretePoint at variable that is used in both the Zombie step, method and the Human step method.
         return np.stack((xs, ys, np.zeros(len(ys), dtype=np.int32)), axis=-1)
 
-agent_cache = {}
-
-
-def restore_agent(agent_data: Tuple):
+agent_brain_cache = {}
+def restore_brain_agent(agent_data: Tuple):
     """Creates an agent from the specified agent_data.
 
     This is used to re-create agents when they have moved from one MPI rank to another.
@@ -100,11 +95,11 @@ def restore_agent(agent_data: Tuple):
     uid = agent_data[0]
     # 0 is id, 1 is type, 2 is rank
     if uid[1] == Neuron.TYPE:
-        if uid in agent_cache:
-            n = agent_cache[uid]
+        if uid in agent_brain_cache:
+            n = agent_brain_cache[uid]
         else:
             n = Neuron(uid[0], uid[2])
-            agent_cache[uid] = n
+            agent_brain_cache[uid] = n
 
         # restore the agent state from the agent_data tuple
         n.is_alive = agent_data[1]
@@ -114,19 +109,44 @@ def restore_agent(agent_data: Tuple):
         n.alpha_ticks = agent_data[5]
         return n
     elif uid[1] == Microglia.TYPE:
-        if uid in agent_cache:
-            return agent_cache[uid]
+        if uid in agent_brain_cache:
+            return agent_brain_cache[uid]
         else:
             c = Microglia(uid[0], uid[2])
-            agent_cache[uid] = c
+            agent_brain_cache[uid] = c
             return c
     elif uid[1] == Astrocyte.TYPE:
-        if uid in agent_cache:
-            return agent_cache[uid]
+        if uid in agent_brain_cache:
+            return agent_brain_cache[uid]
         else:
             c = Astrocyte(uid[0], uid[2])
-            agent_cache[uid] = c
+            agent_brain_cache[uid] = c
             return c
+
+agent_periphery_cache = {}  
+def restore_periphery_agent(agent_data: Tuple):
+    """Creates an agent from the specified agent_data.
+
+    This is used to re-create agents when they have moved from one MPI rank to another.
+    The tuple returned by the agent's save() method is moved between ranks, and restore_agent
+    is called for each tuple in order to create the agent on that rank. Here we also use
+    a cache to cache any agents already created on this rank, and only update their state
+    rather than creating from scratch.
+
+    Args:
+        agent_data: the data to create the agent from. This is the tuple returned from the agent's save() method
+                    where the first element is the agent id tuple, and any remaining arguments encapsulate
+                    agent state.
+    """
+    uid = agent_data[0]
+    # 0 is id, 1 is type, 2 is rank
+    if uid[1] == TCell.TYPE:
+        if uid in agent_periphery_cache:
+            return agent_periphery_cache[uid]
+        else:
+            tc = TCell(uid[0], uid[2])
+            agent_periphery_cache[uid] = tc
+            return tc
 
 
 @dataclass
@@ -137,7 +157,15 @@ class Neurons:
     x: int = 0
     y: int = 0
     rank: int = 0
-    #zombies: int = 0
+
+@dataclass
+class Periphery:
+    """Dataclass used by repast4py aggregate logging to record
+    the number of Humans and Zombies after each tick.
+    """
+    x: int = 0
+    y: int = 0
+    rank: int = 0
 
 # Neuron subclasses repast4py.core.Agent. Subclassing Agent is a requirement for all Repast4Py agent implementations.
 class Neuron(core.Agent):
@@ -239,11 +267,16 @@ class Neuron(core.Agent):
             self.alpha_ticks += 1
 
         return (alive, alpha, pt)
+    
 class Model:
-
+    contexts = {}
     def __init__(self, comm, params):
         self.comm = comm
-        self.context = ctx.SharedContext(comm)
+        self.contexts["brain"] = ctx.SharedContext(comm)
+        self.contexts["peripheral"] = ctx.SharedContext(comm)
+        
+        self.brain = self.contexts["brain"]
+        self.peripheral = self.contexts["peripheral"]
         self.rank = self.comm.Get_rank()
 
         self.runner = schedule.init_schedule_runner(comm)
@@ -252,20 +285,28 @@ class Model:
         self.runner.schedule_end_event(self.at_end)
 
         box = space.BoundingBox(0, params['world.width'], 0, params['world.height'], 0, 0)
-        self.grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
+        self.brain_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
-        self.context.add_projection(self.grid)
+        self.periphery_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
+                                     buffer_size=2, comm=comm)
+        self.brain.add_projection(self.brain_grid)
+        self.peripheral.add_projection(self.periphery_grid)
         
         self.ngh_finder = GridNghFinder(0, 0, box.xextent, box.yextent)
 
-        self.neurons = Neurons()
+        #self.neurons = Neurons()
         #loggers = logging.create_loggers(self.neurons, op=MPI.SUM, rank=self.rank)
-        self.data_set = logging.TabularLogger(self.comm, params['counts_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
+        self.brain_data_set = logging.TabularLogger(self.comm, params['brain_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
+
+        # self.peripheral_logs = Periphery()
+        self.periphery_data_set = logging.TabularLogger(self.comm, params['periphery_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
 
         world_size = comm.Get_size()
-        self.occupied_coords = []
+        self.occupied_brain_coords = []
+        self.occupied_periphery_coords = []
         random.init(self.rank)
 
+        self.id_counter = 0
         # Adding Neurons to the environment
         total_neuron_count = int((params['world.width'] * params['world.height']) * params['neuron.perc'] / 100)
         pp_neuron_count = int(total_neuron_count / world_size)
@@ -286,38 +327,63 @@ class Model:
         if self.rank < total_astrocyte_count % world_size:
             pp_astrocyte_count += 1
         self.add_agents(pp_astrocyte_count, Astrocyte.TYPE)
+
+        # Adding TCells to the environment
+        total_tcells_count = int((params['world.width'] * params['world.height']) * params['tcells.perc'] / 100)
+        pp_tcells_count = int(total_tcells_count / world_size)
+        if self.rank < total_tcells_count % world_size:
+            pp_tcells_count += 1
+        self.add_agents(pp_tcells_count, TCell.TYPE, "PERIPHERY")
     
-    def add_agents(self, pp_count, type):
-        local_bounds = self.grid.get_local_bounds()
+    def add_agents(self, pp_count, type, context_id = "BRAIN"):
+        local_bounds = self.brain_grid.get_local_bounds() if context_id == "BRAIN" else self.periphery_grid.get_local_bounds()
         ag = None
-        for i in range(pp_count):
+        for _ in range(pp_count):
             if type == Neuron.TYPE:
-                ag = Neuron(i, self.rank)
+                ag = Neuron(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
             elif type == Microglia.TYPE:
-                ag = Microglia(i, self.rank)
+                ag = Microglia(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
             elif type == Astrocyte.TYPE:
-                ag = Astrocyte(i, self.rank)
+                ag = Astrocyte(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+            elif type == TCell.TYPE:
+                ag = TCell(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
             
             x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
             y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
-            while (x,y) in self.occupied_coords:
-                x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
-                y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
+            
 
-            self.context.add(ag)
-            self.occupied_coords.append((x,y))
-            self.move(ag, x, y)
+            if context_id == "BRAIN":
+                while (x,y) in self.occupied_brain_coords:
+                    x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
+                    y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
+                self.brain.add(ag)
+                self.move(ag, x, y, "BRAIN")
+                self.occupied_brain_coords.append((x,y))
+            elif context_id == "PERIPHERY":
+                while (x,y) in self.occupied_periphery_coords:
+                    x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
+                    y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
+                self.peripheral.add(ag)
+                self.move(ag, x, y, "PERIPHERY")
+                self.occupied_periphery_coords.append((x,y))
+            
+            self.id_counter += 1
 
     def at_end(self):
-        self.data_set.close()
+        self.brain_data_set.close()
+        self.periphery_data_set.close()
 
-    def move(self, agent, x, y):
-        self.grid.move(agent, dpt(x, y))
+    def move(self, agent, x, y, env):
+        if(env == "BRAIN"):
+            self.brain_grid.move(agent, dpt(x, y))
+        elif(env == "PERIPHERY"):
+            self.periphery_grid.move(agent, dpt(x, y))            
 
     def step(self):
         tick = self.runner.schedule.tick
         self.log_counts(tick)
-        self.context.synchronize(restore_agent)
+        self.brain.synchronize(restore_brain_agent)
+        self.peripheral.synchronize(restore_periphery_agent)
 
         # dead_humans = []
         # for n in self.context.agents(Neuron.TYPE):
@@ -332,7 +398,7 @@ class Model:
         self.runner.execute()
     
     def remove_agent(self, agent):
-        self.context.remove(agent)
+        self.brain.remove(agent)
 
     # def add_zombie(self, pt):
     #     z = Zombie(self.zombie_id, self.rank)
@@ -343,12 +409,18 @@ class Model:
     def log_counts(self, tick):
         #num_agents = self.context.size([Neuron.TYPE])#, Cytokine.TYPE])
         #self.counts.zombies = num_agents[Cytokine.TYPE]
+        #print(num_agents)
         
-        for n in self.context.agents():
-            pt = self.grid.get_location(n)
-            self.data_set.log_row(tick, n.save()[0][0], n.save()[0][1], pt.x, pt.y, self.rank)
+        for ag in self.brain.agents():
+            pt = self.brain_grid.get_location(ag)
+            self.brain_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
             print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
-                    
+        
+        for ag in self.peripheral.agents():
+            pt = self.periphery_grid.get_location(ag)
+            self.periphery_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
+            print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
+
         #if tick % 10 == 0:
             #human_count = np.zeros(1, dtype='int64')
             #zombie_count = np.zeros(1, dtype='int64')

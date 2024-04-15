@@ -6,44 +6,50 @@ class AgentMovementApp:
         self.master = master
         self.master.title("Agent Movement Visualization")
 
-        self.canvas = tk.Canvas(self.master, width=500, height=500, bg="white")
+        self.canvas = tk.Canvas(self.master, width=800, height=800, bg="white")
         self.canvas.pack()
 
         self.agent_markers = {}  # Dictionary to store agent markers by agent ID
+        self.agent_colors = {}  # Dictionary to store agent colors by agent ID
 
         self.read_csv(csv_file)
+        self.create_agent_markers()  # Create agent markers for tick 1
 
     def read_csv(self, csv_file):
         df = pd.read_csv(csv_file)
-        print(df)
-        df.sort_values(by='tick', inplace=True)
-        self.agent_types = df['agent_type'].unique()  # Get unique agent types
-        print(self.agent_types)
-        self.movements = df[['agent_id', 'agent_type', 'x', 'y']].values.tolist()
+        df = df.loc[df["tick"] == 1]
+        print(df.count)
+        df.sort_values(by='tick', inplace=True)  # Sort dataframe by tick
+        self.agents = df['agent_id'].unique()  # Get unique agent IDs
+        self.movements = df[['agent_id', 'x', 'y', 'agent_type']].values.tolist()
 
     def create_agent_markers(self):
-        colors = self.get_agent_colors()
-        for agent_type in self.agent_types:
+        self.get_agent_colors()
+        for agent_id, agent_type in self.agent_colors.items():
             print(agent_type)
-            marker_color = colors[str(agent_type)]
-            marker = self.canvas.create_oval(0, 0, 10, 10, fill=marker_color)  # Create marker for each agent type
-            self.agent_markers[agent_type] = marker
-            print(self.agent_markers)
-
-    def animate_movement(self):
-        self.create_agent_markers()
-        for agent_id, agent_type, x, y in self.movements:
-            marker = self.agent_markers[agent_type]
-            self.canvas.move(marker, x * 50, y * 50)  # Scale up for visualization
-            self.master.after(1000, self.canvas.update())  # Update canvas after 1 second
-        self.master.mainloop()
+            marker = None
+            if agent_type == "red":
+                marker = self.canvas.create_oval(0, 0, 10, 10, fill=agent_type)  # Create marker for each agent ID with color based on agent type
+            elif agent_type == "blue" or agent_type == "green":
+                marker = self.canvas.create_rectangle(0, 0, 10, 10, fill=agent_type)  # Create marker for each agent ID with color based on agent type
+            self.agent_markers[agent_id] = marker
 
     def get_agent_colors(self):
         # Assign different colors for each agent type
         colors = {"0": "red", "3": "green", "4": "blue"}  # Add more agent types and colors as needed
-        return colors
+        for agent_id, x, y, agent_type in self.movements:
+            if agent_id not in self.agent_colors:
+                self.agent_colors[agent_id] = colors[str(agent_type)]
+
+    def animate_movement(self):
+        for agent_id, x, y, _ in self.movements:
+            marker = self.agent_markers[agent_id]
+            print(marker)
+            self.canvas.move(marker, x*20, y*20)  # Scale up for visualization
+            self.master.after(0, self.canvas.update())  # Update canvas after 1 second
+        self.master.mainloop()
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = AgentMovementApp(root, "./output/agent_counts.csv")
+    app = AgentMovementApp(root, "./output/agent_counts_1.csv")
     app.animate_movement()
