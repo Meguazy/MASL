@@ -1,5 +1,5 @@
 random.seed: 42
-stop.at: 1
+stop.at: 2
 neuron.perc: 5
 microglia.perc: 4
 astrocyte.perc: 13

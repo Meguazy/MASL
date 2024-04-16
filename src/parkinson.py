@@ -1,3 +1,5 @@
+import os
+import glob
 import numpy as np
 from typing import Dict, Tuple
 from mpi4py import MPI
@@ -46,8 +48,8 @@ class GridNghFinder:
     # Pass the global grid bounds to the constructor as x and y maximum and minimum values
     def __init__(self, xmin, ymin, xmax, ymax):
         # Create the mo and no offset arrays containing the specified 32-bit integers
-        self.mo = np.array([-1, 0, 1, -1, 0, 1, -1, 0, 1], dtype=np.int32)
-        self.no = np.array([1, 1, 1, 0, 0, 0, -1, -1, -1], dtype=np.int32)
+        self.mo = np.array([-1, 0, 1, -1, 1, -1, 0, 1], dtype=np.int32)
+        self.no = np.array([1, 1, 1, 0, 0, -1, -1, -1], dtype=np.int32)
         # Set the minimum and maximum possible x and y values from the passed in global grid bounds
         self.xmin = xmin
         self.ymin = ymin
@@ -120,6 +122,13 @@ def restore_brain_agent(agent_data: Tuple):
             return agent_brain_cache[uid]
         else:
             c = Astrocyte(uid[0], uid[2])
+            agent_brain_cache[uid] = c
+            return c
+    elif uid[1] == Cytokine.TYPE:
+        if uid in agent_brain_cache:
+            return agent_brain_cache[uid]
+        else:
+            c = Cytokine(uid[0], uid[2])
             agent_brain_cache[uid] = c
             return c
 
@@ -213,7 +222,7 @@ class Neuron(core.Agent):
         # Initialize an alive variable that specifies whether or not this human is still alive (not a zombie).
         alive = self.is_alive
         alpha = self.is_alpha
-        grid = model.grid
+        grid = model.brain_grid
         pt = grid.get_location(self)
         at = dpt(0, 0, 0)
         count_cytos = 0
@@ -238,7 +247,6 @@ class Neuron(core.Agent):
 
         if alive and alpha == False:
             self.alpha_ticks = 0
-            grid = model.grid
             pt = grid.get_location(self)
             
             number_sup = 100 * (count_levos + 1)
@@ -267,6 +275,7 @@ class Neuron(core.Agent):
             self.alpha_ticks += 1
 
         return (alive, alpha, pt)
+    
     
 class Model:
     contexts = {}
@@ -381,24 +390,38 @@ class Model:
 
     def step(self):
         tick = self.runner.schedule.tick
-        self.log_counts(tick)
         self.brain.synchronize(restore_brain_agent)
         self.peripheral.synchronize(restore_periphery_agent)
+        self.log_counts(tick)
 
-        # dead_humans = []
-        # for n in self.context.agents(Neuron.TYPE):
-        #     dead, alpha, pt = n.step()
-        #     if dead:
-        #         dead_humans.append((n, pt))
-        # for h, pt in dead_humans:
-        #     model.remove_agent(h)
-        #     model.add_zombie(pt)
-
+        print("Rank: ", self.rank)
+        print(len(self.occupied_brain_coords))
+        if tick == 1:
+            for n in self.brain.agents(Neuron.TYPE):
+                self.coords_release_agents(self.brain_grid.get_location(n))
+        print(len(self.occupied_brain_coords))
+        print("Rank: ", self.rank)
     def run(self):
         self.runner.execute()
     
     def remove_agent(self, agent):
         self.brain.remove(agent)
+
+    def coords_release_agents(self, pt):
+        nghs = model.ngh_finder.find(pt.x, pt.y)
+        # print("--------------------")
+        # print(pt)
+        # print(nghs)
+        at = dpt(0, 0, 0)
+        for ngh in nghs:            
+            at._reset_from_array(ngh)
+            #print((at.x, at.y))
+            if (at.x, at.y) not in self.occupied_brain_coords and at.x < 40 and at.y < 40 and at.x >= 0 and at.y >= 0:  
+                self.occupied_brain_coords.append((at.x, at.y))              
+                ag = Cytokine(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+                self.brain.add(ag)
+                self.move(ag, at.x, at.y, "BRAIN")
+                self.id_counter += 1
 
     # def add_zombie(self, pt):
     #     z = Zombie(self.zombie_id, self.rank)
@@ -414,12 +437,12 @@ class Model:
         for ag in self.brain.agents():
             pt = self.brain_grid.get_location(ag)
             self.brain_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
-            print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
+            #print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
         
         for ag in self.peripheral.agents():
             pt = self.periphery_grid.get_location(ag)
             self.periphery_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
-            print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
+            #print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
 
         #if tick % 10 == 0:
             #human_count = np.zeros(1, dtype='int64')
@@ -443,6 +466,10 @@ def run(params: Dict):
 
 
 if __name__ == "__main__":
+    # files = glob.glob('output/*')
+    # for f in files:
+    #     print(f)
+    #     os.remove(f)
     parser = create_args_parser()
     args = parser.parse_args()
     params = init_params(args.parameters_file, args.parameters)
