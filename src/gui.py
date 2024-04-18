@@ -42,7 +42,7 @@ class AgentMovementApp:
                 marker = self.canvas.create_rectangle(0, 0, 10, 10, fill=agent_type)  # Create marker for each agent ID with color based on agent type
             elif agent_type == "#00ffff":
                 marker = self.canvas.create_polygon(0, 0, 10, 0, 5, 10, fill=agent_type)
-            self.agent_markers[str(agent_id)] = marker
+            self.agent_markers[agent_id] = marker
 
     def get_agent_colors(self):
         # Assign different colors for each agent type
@@ -55,44 +55,67 @@ class AgentMovementApp:
                 self.agent_colors[agent_id] = colors[str(agent_type)]
 
     def animate_movement(self):
-        for tick in range(1, 3):  # Loop through each tick
-            tick_df_brain = None
-            tick_df_periphery = None
-            print(tick)
-            if tick > 1:
-                tick_df_brain = self.brain_df[self.brain_df['tick'] == tick]# and self.brain_df['agent_type'] == 1]
-                tick_df_brain = tick_df_brain[tick_df_brain['agent_type'] == 1]
-            else:
-                tick_df_brain = self.brain_df[self.brain_df['tick'] == tick]
-                tick_df_periphery = self.periphery_df[self.periphery_df['tick'] == tick]  # Get dataframe for each tick
-           
-            tick_df_brain.to_csv('output/brain_tick_' + str(i) + '.csv', index=False)
+        delay = 0
+        for tick in range(1, 14):
+            if tick > 3:
+                delay = 1000
+            tick_previous_df = self.brain_df[self.brain_df['tick'] == tick - 1]
+            tick_current_df = self.brain_df[self.brain_df['tick'] == tick]
+            brain_tick_df = find_tick_diff(tick_previous_df, tick_current_df)
+            brain_tick_df_dropped = brain_tick_df.drop(brain_tick_df[brain_tick_df['status'] == 'NOT_CHANGED'].index)
+            brain_tick_df_dropped = brain_tick_df_dropped.reset_index()
 
-            if tick_df_brain is not None:
-                tick_brain_movements = tick_df_brain[['agent_id', 'x', 'y', 'agent_type']].values.tolist()  # Get agent movements for each tick
-                for agent_id, x, y, _ in tick_brain_movements:
-                    marker = self.agent_markers[str(agent_id)]
-                    #print(marker)
-                    self.canvas.move(marker, x*10, y*10)  # Scale up for visualization
-                    self.master.after(0, self.canvas.update())  # Update canvas after 1 second
+            for _, row in brain_tick_df_dropped.iterrows():
+                status = row["status"]
+                marker = self.agent_markers[row["agent_id"]]
+                print(marker)
+                if(status == "NEW"):
+                    self.canvas.move(marker, row["x_updated"]*10, row["y_updated"]*10)
+                elif(status == "MOVED"):
+                    self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, (row["y_updated"] - row["y_initial"])*10)
+                elif(status == "REMOVED"):
+                    self.canvas.delete(marker)
+                self.master.after(delay, self.canvas.update())
+            if tick == 1:
+                tick_previous_df = self.periphery_df[self.periphery_df['tick'] == tick - 1]
+                tick_current_df = self.periphery_df[self.periphery_df['tick'] == tick]
+                periphery_tick_df = find_tick_diff(tick_previous_df, tick_current_df)
 
-            if tick_df_periphery is not None:
-                tick_periphery_movements = tick_df_periphery[['agent_id', 'x', 'y', 'agent_type']].values.tolist()  # Get agent movements for each tick
-                for agent_id, x, y, _ in tick_periphery_movements:
-                    marker = self.agent_markers[str(agent_id)]                                        
-                    self.canvas.move(marker, x*10, (y*10)+500)  # Scale up for visualization
-                    self.master.after(0, self.canvas.update())  # Update canvas after 1 second
-            
+                for _, row in periphery_tick_df.iterrows():
+                    status = row["status"]
+                    marker = self.agent_markers[row["agent_id"]]
+                    if(status == "NEW"):
+                        self.canvas.move(marker, row["x_updated"]*10, (row["y_updated"]*10)+500)
+                    elif(status == "MOVED"):
+                        self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, ((row["y_updated"] - row["y_initial"])*10)+500)
+                    elif(status == "REMOVED"):
+                        self.canvas.delete(marker)
+                    self.master.after(0, self.canvas.update())
 
-  
-                    
         self.master.mainloop()
+        
+
+def find_tick_diff(tick_previous_df, tick_current_df):
+    merged_df = pd.merge(tick_previous_df, tick_current_df, on='agent_id', how="outer", suffixes=('_initial', '_updated'))
+
+    def determine_status(row):
+        if pd.isnull(row['x_updated']) and pd.isnull(row['y_updated']):
+            return 'REMOVED'
+        elif pd.isnull(row['x_initial']) and pd.isnull(row['y_initial']):
+            return 'NEW'
+        elif row['x_initial'] == row['x_updated'] and row['y_initial'] == row['y_updated']:
+            return 'NOT_CHANGED'
+        else:
+            return 'MOVED'
+
+    merged_df['status'] = merged_df.apply(determine_status, axis=1)
+
+    merged_df.drop(['tick_initial', 'tick_updated'], axis=1, inplace=True)
+    
+    return merged_df
 
 if __name__ == "__main__":
-    for i in range(1,3):
-        print("AÀaaaa")
-        print(i)
     root = tk.Tk()
-    app = AgentMovementApp(root, "./output/brain_set_2.csv", "./output/periphery_set.csv")
+    app = AgentMovementApp(root, "./output/brain_set.csv", "./output/periphery_set.csv")
     app.animate_movement()
     

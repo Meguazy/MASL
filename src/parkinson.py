@@ -18,8 +18,7 @@ from repast4py.space import BorderType, OccupancyType
 
 from cytokine import Cytokine
 from levodopa import Levodopa
-from microglia import Microglia
-from astrocyte import Astrocyte
+from antigen import Antigen
 from tcell import TCell
 
 model = None
@@ -98,39 +97,43 @@ def restore_brain_agent(agent_data: Tuple):
     # 0 is id, 1 is type, 2 is rank
     if uid[1] == Neuron.TYPE:
         if uid in agent_brain_cache:
-            n = agent_brain_cache[uid]
+            ag = agent_brain_cache[uid]
         else:
-            n = Neuron(uid[0], uid[2])
-            agent_brain_cache[uid] = n
+            ag = Neuron(uid[0], uid[2])
+            agent_brain_cache[uid] = ag
 
         # restore the agent state from the agent_data tuple
-        n.is_alive = agent_data[1]
-        n.is_alpha = agent_data[2]
-        n.num_alpha = agent_data[3]
-        n.num_misfolded = agent_data[4]
-        n.alpha_ticks = agent_data[5]
-        return n
+        ag.is_alive = agent_data[1]
+        ag.is_alpha = agent_data[2]
+        ag.num_alpha = agent_data[3]
+        ag.num_misfolded = agent_data[4]
+        ag.alpha_ticks = agent_data[5]
+        return ag
     elif uid[1] == Microglia.TYPE:
         if uid in agent_brain_cache:
-            return agent_brain_cache[uid]
+            ag = agent_brain_cache[uid]
         else:
-            c = Microglia(uid[0], uid[2])
-            agent_brain_cache[uid] = c
-            return c
+            ag = Microglia(uid[0], uid[2])
+            agent_brain_cache[uid] = ag
+        
+        ag.is_activated = agent_data[1]
+        return ag
     elif uid[1] == Astrocyte.TYPE:
         if uid in agent_brain_cache:
-            return agent_brain_cache[uid]
+            ag = agent_brain_cache[uid]
         else:
-            c = Astrocyte(uid[0], uid[2])
-            agent_brain_cache[uid] = c
-            return c
+            ag = Astrocyte(uid[0], uid[2])
+            agent_brain_cache[uid] = ag
+
+        ag.is_activated = agent_data[1]    
+        return ag
     elif uid[1] == Cytokine.TYPE:
         if uid in agent_brain_cache:
             return agent_brain_cache[uid]
         else:
-            c = Cytokine(uid[0], uid[2])
-            agent_brain_cache[uid] = c
-            return c
+            ag = Cytokine(uid[0], uid[2])
+            agent_brain_cache[uid] = ag
+            return ag
 
 agent_periphery_cache = {}  
 def restore_periphery_agent(agent_data: Tuple):
@@ -177,6 +180,100 @@ class Periphery:
     rank: int = 0
 
 # Neuron subclasses repast4py.core.Agent. Subclassing Agent is a requirement for all Repast4Py agent implementations.
+class Astrocyte(core.Agent):
+    """The Astrocyte Agent
+
+    Args:
+        a_id: a integer that uniquely identifies this Astrocyte on its starting rank
+        rank: the starting MPI rank of this Astrocyte.
+    """
+    # TYPE is a class variable that defines the agent type id the Astrocyte agent. This is a required part of the unique agent id tuple.
+    TYPE = 4
+
+    def __init__(self, a_id: int, rank: int):
+        super().__init__(id=a_id, type=Astrocyte.TYPE, rank=rank)
+
+    def save(self) -> Tuple:
+        """Saves the state of this Astrocyte as a Tuple.
+
+        Used to move this Astrocyte from one MPI rank to another.
+
+        Returns:
+            The saved state of this Astrocyte.
+        """
+        return (self.uid, self.is_activated)
+    
+    def step(self):
+        release_cytokine = True
+        grid = model.brain_grid
+        pt = grid.get_location(self)
+        at = dpt(0, 0)
+        count_antigent = 0
+        count_cytos = 0
+        if self.is_activated == False:
+            nghs = model.ngh_finder.find(pt.x, pt.y)
+            for ngh in nghs:
+                at._reset_from_array(ngh)            
+                for obj in grid.get_agents(at):
+                    if obj.uid[1] == Antigen.TYPE:
+                        count_antigent += 1
+                    elif obj.uid[1] == Cytokine.TYPE:
+                        count_cytos += 1    
+
+            if count_antigent >= 2 or count_cytos >= 2:
+                self.is_activated = True
+                return (release_cytokine, pt)
+        
+        return (not release_cytokine, pt)
+
+
+# Neuron subclasses repast4py.core.Agent. Subclassing Agent is a requirement for all Repast4Py agent implementations.
+class Microglia(core.Agent):
+    """The Cytokine Agent
+
+    Args:
+        a_id: a integer that uniquely identifies this Cytokine on its starting rank
+        rank: the starting MPI rank of this Cytokine.
+    """
+    # TYPE is a class variable that defines the agent type id the Cytokine agent. This is a required part of the unique agent id tuple.
+    TYPE = 3
+
+    def __init__(self, a_id: int, rank: int):
+        super().__init__(id=a_id, type=Microglia.TYPE, rank=rank)
+        self.is_activated = False
+
+    def save(self) -> Tuple:
+        """Saves the state of this Human as a Tuple.
+
+        Used to move this Human from one MPI rank to another.
+
+        Returns:
+            The saved state of this Human.
+        """
+        return (self.uid, self.is_activated)
+    
+    def step(self):
+        release_cytokine = True
+        grid = model.brain_grid
+        pt = grid.get_location(self)
+        at = dpt(0, 0)
+        count_antigent = 0
+        if self.is_activated == False:
+            nghs = model.ngh_finder.find(pt.x, pt.y)
+            for ngh in nghs:
+                at._reset_from_array(ngh)            
+                for obj in grid.get_agents(at):
+                    if obj.uid[1] == Antigen.TYPE:
+                        count_antigent += 1
+
+            if count_antigent >= 2:
+                self.is_activated = True
+                return (release_cytokine, pt)
+        
+        return (not release_cytokine, pt)
+
+
+# Neuron subclasses repast4py.core.Agent. Subclassing Agent is a requirement for all Repast4Py agent implementations.
 class Neuron(core.Agent):
     """The Neuron Agent
 
@@ -219,63 +316,58 @@ class Neuron(core.Agent):
     # Given the similarities with the Zombie step() method only the relevant differences will be highlighted below.
     # See the comments on the Zombie class for more informations.
     def step(self):
-        # Initialize an alive variable that specifies whether or not this human is still alive (not a zombie).
-        alive = self.is_alive
-        alpha = self.is_alpha
+        release_antigens = True
         grid = model.brain_grid
         pt = grid.get_location(self)
-        at = dpt(0, 0, 0)
-        count_cytos = 0
-        count_levos = 0
-        count_deads = 0
+        at = dpt(0, 0)
+        count_cytos, count_levos, count_deads = 0, 0, 0
+        if self.is_alive:            
+            nghs = model.ngh_finder.find(pt.x, pt.y)
+            for ngh in nghs:
+                at._reset_from_array(ngh)            
+                for obj in grid.get_agents(at):
+                    if obj.uid[1] == Cytokine.TYPE:
+                        count_cytos += 1
+                    elif obj.uid[1] == Levodopa.TYPE:
+                        count_levos += 1
+                    elif self.is_alive and self.is_alpha == False and obj.uid[1] == Neuron.TYPE and obj.is_alive == False and obj.is_alpha:
+                        obj.is_alpha = False
+                        self.num_alpha += obj.num_alpha
+                        self.num_misfolded += obj.num_misfolded
+                        obj.num_alpha = 0
+                        obj.num_misfolded = 0
+                        count_deads += 1
 
-        nghs = model.ngh_finder.find(pt.x, pt.y)  # include_origin=True)
-        for ngh in nghs:
-            at._reset_from_array(ngh)                
-            for obj in grid.get_agents(at):
-                if obj.uid[1] == Cytokine.TYPE:
-                    count_cytos += 1
-                elif obj.uid[1] == Levodopa.TYPE:
-                    count_levos += 1
-                elif self.is_alive and self.is_alpha == False and obj.uid[1] == Neuron.TYPE and obj.is_alive == False and obj.is_alpha:
-                    obj.is_alpha = False
-                    self.num_alpha += obj.num_alpha
-                    self.num_misfolded += obj.num_misfolded
-                    obj.num_alpha = 0
-                    obj.num_misfolded = 0
-                    count_deads += 1
+            if self.is_alpha == False:
+                self.alpha_ticks = 0
+                pt = grid.get_location(self)
+                
+                number_sup = 100 * (count_levos + 1)
+                if count_cytos >= 2:
+                    self.is_alive = False
+                elif count_levos <= 5 and (count_deads >= 1 or random.default_rng.integers(0, number_sup) > number_sup - 2):
+                    self.is_alpha = True                    
+                
+            else:                
+                if (count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.95):
+                    self.is_alive = False
+                    return (release_antigens, pt)
+                elif (self.alpha_ticks > int(14/(count_levos + 1))) and (float(self.num_misfolded) / float(self.num_alpha) < 0.45):
+                    self.is_alpha = False
 
-        if alive and alpha == False:
-            self.alpha_ticks = 0
-            pt = grid.get_location(self)
-            
-            number_sup = 100 * (count_levos + 1)
-            if count_cytos >= 2:
-                return (not alive, alpha, pt)
-            elif count_levos <= 5 and (count_deads >= 1 or random.default_rng.integers(0, number_sup) > number_sup - 2):
-                return (alive, not alpha, pt)
-            
-        elif alive and alpha:
-            
-            if (count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.95):
-                return(not alive, alpha, pt)
-            elif (self.alpha_ticks > int(14/(count_levos + 1))) and (float(self.num_misfolded) / float(self.num_alpha) < 0.45):
-                return(alive, not alpha, pt)
+                self.num_alpha += int(self.num_alpha * random.default_rng.integers(10 ,30) / 100)
 
-            self.num_alpha += int(self.num_alpha * random.default_rng.integers(10 ,30) / 100)
+                new_misfolded = int((self.num_alpha - self.num_misfolded) * random.default_rng.integers(10, 15) / 100)
+                if (self.num_misfolded + new_misfolded > self.num_alpha):
+                    self.num_misfolded = self.num_alpha
+                else:
+                    self.num_misfolded += new_misfolded
 
-            new_misfolded = int((self.num_alpha - self.num_misfolded) * random.default_rng.integers(10, 15) / 100)
-            if (self.num_misfolded + new_misfolded > self.num_alpha):
-                self.num_misfolded = self.num_alpha
-            else:
-                self.num_misfolded += new_misfolded
+                self.num_misfolded -= int(self.num_misfolded * random.default_rng.integers(10, 100) / 100)
 
-            self.num_misfolded -= int(self.num_misfolded * random.default_rng.integers(10, 100) / 100)
+                self.alpha_ticks += 1
 
-            self.alpha_ticks += 1
-
-        return (alive, alpha, pt)
-    
+        return (not release_antigens, pt)
     
 class Model:
     contexts = {}
@@ -284,8 +376,6 @@ class Model:
         self.contexts["brain"] = ctx.SharedContext(comm)
         self.contexts["peripheral"] = ctx.SharedContext(comm)
         
-        self.brain = self.contexts["brain"]
-        self.peripheral = self.contexts["peripheral"]
         self.rank = self.comm.Get_rank()
 
         self.runner = schedule.init_schedule_runner(comm)
@@ -298,8 +388,8 @@ class Model:
                                      buffer_size=2, comm=comm)
         self.periphery_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
-        self.brain.add_projection(self.brain_grid)
-        self.peripheral.add_projection(self.periphery_grid)
+        self.contexts["brain"].add_projection(self.brain_grid)
+        self.contexts["peripheral"].add_projection(self.periphery_grid)
         
         self.ngh_finder = GridNghFinder(0, 0, box.xextent, box.yextent)
 
@@ -359,20 +449,19 @@ class Model:
             
             x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
             y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
-            
 
             if context_id == "BRAIN":
                 while (x,y) in self.occupied_brain_coords:
                     x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
                     y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
-                self.brain.add(ag)
+                self.contexts["brain"].add(ag)
                 self.move(ag, x, y, "BRAIN")
                 self.occupied_brain_coords.append((x,y))
             elif context_id == "PERIPHERY":
                 while (x,y) in self.occupied_periphery_coords:
                     x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
                     y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
-                self.peripheral.add(ag)
+                self.contexts["peripheral"].add(ag)
                 self.move(ag, x, y, "PERIPHERY")
                 self.occupied_periphery_coords.append((x,y))
             
@@ -390,68 +479,74 @@ class Model:
 
     def step(self):
         tick = self.runner.schedule.tick
-        self.brain.synchronize(restore_brain_agent)
-        self.peripheral.synchronize(restore_periphery_agent)
+        self.contexts["brain"].synchronize(restore_brain_agent)
+        self.contexts["peripheral"].synchronize(restore_periphery_agent)
         self.log_counts(tick)
 
-        print("Rank: ", self.rank)
-        print(len(self.occupied_brain_coords))
-        if tick == 1:
-            for n in self.brain.agents(Neuron.TYPE):
-                self.coords_release_agents(self.brain_grid.get_location(n))
-        print(len(self.occupied_brain_coords))
-        print("Rank: ", self.rank)
+        for h in self.contexts["brain"].agents(Neuron.TYPE):
+            release_antigen, pt = h.step()
+            if release_antigen:
+                self.coords_release_agents(pt, "ANTIGEN")
+        for h in self.contexts["brain"].agents(Microglia.TYPE):
+            release_cytos, pt = h.step()
+            if release_cytos:
+                self.coords_release_agents(pt, "CYTOKINE")
+        for h in self.contexts["brain"].agents(Astrocyte.TYPE):
+            release_cytos, pt = h.step()
+            if release_cytos:
+                self.coords_release_agents(pt, "CYTOKINE")                                
+            
+
     def run(self):
         self.runner.execute()
     
     def remove_agent(self, agent):
-        self.brain.remove(agent)
+        self.contexts["brain"].remove(agent)
 
-    def coords_release_agents(self, pt):
+    def coords_release_agents(self, pt, agent_type):
         nghs = model.ngh_finder.find(pt.x, pt.y)
-        # print("--------------------")
-        # print(pt)
-        # print(nghs)
-        at = dpt(0, 0, 0)
+        at = dpt(0, 0)
         for ngh in nghs:            
             at._reset_from_array(ngh)
-            #print((at.x, at.y))
-            if (at.x, at.y) not in self.occupied_brain_coords and at.x < 40 and at.y < 40 and at.x >= 0 and at.y >= 0:  
-                self.occupied_brain_coords.append((at.x, at.y))              
-                ag = Cytokine(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
-                self.brain.add(ag)
-                self.move(ag, at.x, at.y, "BRAIN")
-                self.id_counter += 1
 
-    # def add_zombie(self, pt):
-    #     z = Zombie(self.zombie_id, self.rank)
-    #     self.zombie_id += 1
-    #     self.context.add(z)
-    #     self.move(z, pt.x, pt.y)
+            x=at.x
+            if at.x>39:
+                x = 39
+            elif at.x<0:
+                x = 0
+
+            y=at.y
+            if at.y>39:
+                y = 39
+            elif at.y<0:
+                y = 0
+
+            if (x, y) not in self.occupied_brain_coords:           
+                ag = None
+                if agent_type == "ANTIGEN":
+                    ag = Antigen(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+                elif agent_type == "CYTOKINE":
+                    ag = Cytokine(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+
+                self.contexts["brain"].add(ag)
+                self.move(ag, x, y, "BRAIN")
+                self.occupied_brain_coords.append((x, y))
+                self.id_counter += 1
 
     def log_counts(self, tick):
         #num_agents = self.context.size([Neuron.TYPE])#, Cytokine.TYPE])
         #self.counts.zombies = num_agents[Cytokine.TYPE]
         #print(num_agents)
         
-        for ag in self.brain.agents():
+        for ag in self.contexts["brain"].agents():
             pt = self.brain_grid.get_location(ag)
             self.brain_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
             #print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
         
-        for ag in self.peripheral.agents():
+        for ag in self.contexts["peripheral"].agents():
             pt = self.periphery_grid.get_location(ag)
             self.periphery_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
             #print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
-
-        #if tick % 10 == 0:
-            #human_count = np.zeros(1, dtype='int64')
-            #zombie_count = np.zeros(1, dtype='int64')
-            #self.comm.Reduce(np.array([self.counts.humans], dtype='int64'), human_count, op=MPI.SUM, root=0)
-            #self.comm.Reduce(np.array([self.counts.zombies], dtype='int64'), zombie_count, op=MPI.SUM, root=0)
-            #if (self.rank == 0):
-                #print("Tick: {}, Human Count: {}, Zombie Count: {}".format(tick, human_count[0], zombie_count[0]), flush=True)
-             #   print("Tick: {}, x: {}, y: {}".format(tick, human_count[0]), flush=True)
 
 
 def run(params: Dict):
@@ -466,14 +561,7 @@ def run(params: Dict):
 
 
 if __name__ == "__main__":
-    # files = glob.glob('output/*')
-    # for f in files:
-    #     print(f)
-    #     os.remove(f)
     parser = create_args_parser()
     args = parser.parse_args()
     params = init_params(args.parameters_file, args.parameters)
     run(params)
-
-# The simulation is run from the command line. For example, from within the examples/zombies directory:
-# mpirun -n 4 python zombies.py zombie_model.yaml
