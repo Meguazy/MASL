@@ -56,7 +56,8 @@ class AgentMovementApp:
 
     def animate_movement(self):
         delay = 0
-        for tick in range(1, 14):
+        max_tick = self.brain_df['tick'].max()
+        for tick in range(1, max_tick):
             if tick > 3:
                 delay = 1000
             tick_previous_df = self.brain_df[self.brain_df['tick'] == tick - 1]
@@ -76,6 +77,7 @@ class AgentMovementApp:
                 elif(status == "REMOVED"):
                     self.canvas.delete(marker)
                 self.master.after(delay, self.canvas.update())
+                
             if tick == 1:
                 tick_previous_df = self.periphery_df[self.periphery_df['tick'] == tick - 1]
                 tick_current_df = self.periphery_df[self.periphery_df['tick'] == tick]
