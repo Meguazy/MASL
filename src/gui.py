@@ -24,13 +24,13 @@ class AgentMovementApp:
     def read_csv(self, csv_file, env_id):
         df = pd.read_csv(csv_file, usecols=["tick", "agent_id", "agent_type", "x", "y"])
         df.sort_values(by=['tick', 'agent_id'], inplace=True)  # Sort dataframe by tick
-        if env_id == 0:   
+        if env_id == 0:
             self.brain_agents = df['agent_id'].unique()  # Get unique agent IDs
             self.brain_movements = df[['agent_id', 'x', 'y', 'agent_type']].values.tolist()  # Get agent movements
-        elif env_id == 1:   
+        elif env_id == 1:
             self.periphery_agents = df['agent_id'].unique()  # Get unique agent IDs        
             self.periphery_movements = df[['agent_id', 'x', 'y', 'agent_type']].values.tolist()
-        return df              
+        return df    
 
     def create_agent_markers(self):
         self.get_agent_colors()
