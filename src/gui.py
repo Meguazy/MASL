@@ -1,5 +1,6 @@
 import tkinter as tk
 import pandas as pd
+import loguru
 
 class AgentMovementApp:
 
@@ -22,6 +23,9 @@ class AgentMovementApp:
 
         self.brain_df = self.read_csv(csv_file_brain, 0)
         self.periphery_df = self.read_csv(csv_file_periphery, 1)
+        self.neurons_status_df = pd.read_csv("./output/neuron_status.csv")
+        self.microglia_status_df = pd.read_csv("./output/microglia_status.csv")
+        self.astrocytes_status_df = pd.read_csv("./output/astrocyte_status.csv")
         self.create_agent_markers()  # Create agent markers for tick 1
 
     def read_csv(self, csv_file, env_id):
@@ -37,25 +41,31 @@ class AgentMovementApp:
 
     def create_agent_markers(self):
         self.get_agent_colors()
-        for agent_id, agent_type in self.agent_colors.items():
+        # print(self.agent_colors)
+        for agent_id, value in self.agent_colors.items():
             marker = None
-            if agent_type == "red":
-                marker = self.canvas.create_oval(0, 0, 10, 10, fill=agent_type)  # Create marker for each agent ID with color based on agent type
-            elif agent_type == "blue" or agent_type == "green" or agent_type == "yellow" or agent_type == "#6646e2":
-                marker = self.canvas.create_rectangle(0, 0, 10, 10, fill=agent_type)  # Create marker for each agent ID with color based on agent type
-            elif agent_type == "#00ffff":
-                marker = self.canvas.create_polygon(0, 0, 10, 0, 5, 10, fill=agent_type)
+            agent_type = value[1]
+            color = value[0]
+
+            if agent_type == 0:
+                marker = self.canvas.create_oval(0, 0, 10, 10, fill=color)  # Create marker for each agent ID with color based on agent type
+            elif agent_type == 3:
+                marker = self.canvas.create_rectangle(0, 0, 10, 10, fill=color)
+            elif agent_type == 4:
+                marker = self.canvas.create_polygon(0, 0, 10, 0, 5, 10, fill=color)
+            else:
+                marker = self.canvas.create_oval(0, 0, 10, 10, fill=color)
             self.agent_markers[agent_id] = marker
 
     def get_agent_colors(self):
         # Assign different colors for each agent type
-        colors = {"0": "red", "1": "yellow", "3": "green", "4": "blue", "5": "#00ffff", "6": "#6646e2"}  # Add more agent types and colors as needed
+        colors = {0: "red", 1: "yellow", 3: "red", 4: "red", 5: "#00ffff", 6: "#6646e2", 7: "#1be8e4"}  # Add more agent types and colors as needed
         for agent_id, x, y, agent_type in self.brain_movements:
             if agent_id not in self.agent_colors:
-                self.agent_colors[agent_id] = colors[str(agent_type)]
+                self.agent_colors[agent_id] = [colors[agent_type], agent_type]
         for agent_id, x, y, agent_type in self.periphery_movements:
             if agent_id not in self.agent_colors:
-                self.agent_colors[agent_id] = colors[str(agent_type)]
+                self.agent_colors[agent_id] = [colors[agent_type], agent_type]
 
     def create_tick_display(self):
         # Create a rectangle to display the current tick number
@@ -70,44 +80,96 @@ class AgentMovementApp:
         delay = 0
         max_tick = self.brain_df['tick'].max()
         for tick in range(1, max_tick):
+            loguru.logger.debug(f"Starting processing tick {tick}")
+
             self.update_tick_display(tick)
             if tick > 1:
-                delay = 300
-            tick_previous_df = self.brain_df[self.brain_df['tick'] == tick - 1]
-            tick_current_df = self.brain_df[self.brain_df['tick'] == tick]
-            brain_tick_df = find_tick_diff(tick_previous_df, tick_current_df)
+                delay = 500  # Delay in milliseconds between ticks
+
+            brain_tick_df = find_tick_diff(self.brain_df[self.brain_df['tick'] == tick - 1], self.brain_df[self.brain_df['tick'] == tick])
             brain_tick_df_dropped = brain_tick_df.drop(brain_tick_df[brain_tick_df['status'] == 'NOT_CHANGED'].index)
             brain_tick_df_dropped = brain_tick_df_dropped.reset_index()
+
+            loguru.logger.debug(f"Starting brain movement processing for tick {tick}")
 
             for _, row in brain_tick_df_dropped.iterrows():
                 status = row["status"]
                 marker = self.agent_markers[row["agent_id"]]
-                print(marker)
                 
                 if(status == "NEW"):
                     self.canvas.move(marker, row["x_updated"]*10, row["y_updated"]*10)
                 elif(status == "MOVED"):
                     self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, (row["y_updated"] - row["y_initial"])*10)
                 elif(status == "REMOVED"):
-                    self.canvas.delete(marker)
-                
-                
-            if tick == 1:
-                tick_previous_df = self.periphery_df[self.periphery_df['tick'] == tick - 1]
-                tick_current_df = self.periphery_df[self.periphery_df['tick'] == tick]
-                periphery_tick_df = find_tick_diff(tick_previous_df, tick_current_df)
+                    self.canvas.move(marker, -row["x_initial"]*10, -row["y_initial"]*10)
+            
+            loguru.logger.debug(f"Finished brain movement processing for tick {tick}")
+            loguru.logger.debug(f"Starting brain status processing for tick {tick}")
 
-                for _, row in periphery_tick_df.iterrows():
-                    status = row["status"]
-                    marker = self.agent_markers[row["agent_id"]]
-                    if(status == "NEW"):
-                        self.canvas.move(marker, row["x_updated"]*10, (row["y_updated"]*10)+500)
-                    elif(status == "MOVED"):
-                        self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, ((row["y_updated"] - row["y_initial"])*10)+500)
-                    elif(status == "REMOVED"):
-                        self.canvas.delete(marker)
-                        
+            tick_status_brain_df = self.neurons_status_df[self.neurons_status_df['tick'] == tick]
+            tick_status_brain_df.reset_index()
+
+            for _, row in tick_status_brain_df.iterrows():
+                marker = self.agent_markers[row["agent_id"]]
+                if row["is_alive"]:
+                    if row["is_alpha"]:
+                        self.canvas.itemconfig(marker, fill="green")
+                    else:
+                        self.canvas.itemconfig(marker, fill="red")
+                else:
+                    self.canvas.itemconfig(marker, fill="black")
+
+            loguru.logger.debug(f"Finished brain status processing for tick {tick}")
+            loguru.logger.debug(f"Starting microglia status processing for tick {tick}")
+
+            tick_status_microglia_df = self.microglia_status_df[self.microglia_status_df['tick'] == tick]
+            tick_status_microglia_df.reset_index()
+
+            for _, row in tick_status_microglia_df.iterrows():
+                marker = self.agent_markers[row["agent_id"]]
+                if row["is_activated"]:
+                    self.canvas.itemconfig(marker, fill="black")
+                else:
+                    self.canvas.itemconfig(marker, fill="red")
+
+            loguru.logger.debug(f"Finished microglia status processing for tick {tick}")
+            loguru.logger.debug(f"Starting astrocytes status processing for tick {tick}")
+
+            tick_status_astrocytes_df = self.astrocytes_status_df[self.astrocytes_status_df['tick'] == tick]
+            tick_status_astrocytes_df.reset_index()
+
+            for _, row in tick_status_astrocytes_df.iterrows():
+                marker = self.agent_markers[row["agent_id"]]
+                if row["is_activated"]:
+                    self.canvas.itemconfig(marker, fill="black")
+                else:
+                    self.canvas.itemconfig(marker, fill="red")
+
+            loguru.logger.debug(f"Finished astrocytes status processing for tick {tick}")
+            loguru.logger.debug(f"Starting periphery movement processing for tick {tick}")
+
+            periphery_tick_df = find_tick_diff(self.periphery_df[self.periphery_df['tick'] == tick - 1], self.periphery_df[self.periphery_df['tick'] == tick])
+            periphery_tick_df_dropped = periphery_tick_df.drop(periphery_tick_df[periphery_tick_df['status'] == 'NOT_CHANGED'].index)
+            periphery_tick_df_dropped = periphery_tick_df_dropped.reset_index()
+            if tick == 35:
+                periphery_tick_df_dropped.to_csv("periphery_tick_df.csv")
+
+            for _, row in periphery_tick_df_dropped.iterrows():
+                status = row["status"]
+                marker = self.agent_markers[row["agent_id"]]
+                if(status == "NEW"):
+                    loguru.logger.debug(f"Creating new marker for agent {row['agent_id']}")
+                    self.canvas.move(marker, row["x_updated"]*10, (row["y_updated"]*10)+500)
+                elif(status == "MOVED"):
+                    self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, ((row["y_updated"] - row["y_initial"])*10)+500)
+                elif(status == "REMOVED"):
+                    self.canvas.delete(marker)
+            
+            loguru.logger.debug(f"Finished periphery movement processing for tick {tick}")
+
             self.master.after(delay, self.canvas.update())
+
+            loguru.logger.debug(f"Finished processing tick {tick}")
         self.master.mainloop()
         
 
@@ -129,6 +191,7 @@ def find_tick_diff(tick_previous_df, tick_current_df):
     merged_df.drop(['tick_initial', 'tick_updated'], axis=1, inplace=True)
     
     return merged_df
+
 
 if __name__ == "__main__":
     root = tk.Tk()

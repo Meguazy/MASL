@@ -5,6 +5,8 @@ from typing import Dict, Tuple
 from mpi4py import MPI
 from dataclasses import dataclass
 
+import loguru
+
 import numba
 from numba import int32, int64
 from numba.experimental import jitclass
@@ -17,6 +19,7 @@ from repast4py.space import DiscretePoint as dpt
 from repast4py.space import BorderType, OccupancyType
 
 from cytokine import Cytokine
+from debris import Debris
 from levodopa import Levodopa
 from antigen import Antigen
 from tcell import TCell
@@ -141,6 +144,13 @@ def restore_brain_agent(agent_data: Tuple):
             ag = Antigen(uid[0], uid[2])
             agent_brain_cache[uid] = ag
             return ag
+    elif uid[1] == Debris.TYPE:
+        if uid in agent_brain_cache:
+            return agent_brain_cache[uid]
+        else:
+            ag = Debris(uid[0], uid[2])
+            agent_brain_cache[uid] = ag
+            return ag
 
 agent_periphery_cache = {}  
 def restore_periphery_agent(agent_data: Tuple):
@@ -166,6 +176,13 @@ def restore_periphery_agent(agent_data: Tuple):
             tc = TCell(uid[0], uid[2])
             agent_periphery_cache[uid] = tc
             return tc
+    elif uid[1] == Antigen.TYPE:
+        if uid in agent_periphery_cache:
+            return agent_periphery_cache[uid]
+        else:
+            ag = Antigen(uid[0], uid[2])
+            agent_periphery_cache[uid] = ag
+            return ag
 
 
 @dataclass
@@ -185,6 +202,32 @@ class Periphery:
     x: int = 0
     y: int = 0
     rank: int = 0
+
+
+class BloodBrainBarrier():
+
+    def __init__(self):
+        self.retained_antigens = []
+        self.retained_th1s = []
+
+    def retain(self, ag, pt, type):
+        if type == Antigen.TYPE:
+            self.retained_antigens.append((ag, pt))
+            loguru.debug("Rank: {}, retained_antigens: {}".format(model.rank, len(self.retained_antigens)))
+        elif type == TCell.TYPE:
+            self.retained_th1s.append((ag, pt))
+    
+    def release(self, agent_type: int):
+        to_release = []
+        if agent_type == Antigen.TYPE:
+            to_release = self.retained_antigens.copy()
+            self.retained_antigens = []
+        elif agent_type == TCell.TYPE:
+            to_release = self.retained_th1s.copy()
+            self.retained_th1s = []
+
+        return to_release
+
 
 # Neuron subclasses repast4py.core.Agent. Subclassing Agent is a requirement for all Repast4Py agent implementations.
 class Astrocyte(core.Agent):
@@ -223,7 +266,7 @@ class Astrocyte(core.Agent):
             for ngh in nghs:
                 at._reset_from_array(ngh)            
                 for obj in grid.get_agents(at):
-                    if obj.uid[1] == Antigen.TYPE:
+                    if obj.uid[1] == Debris.TYPE:
                         count_antigent += 1
                     elif obj.uid[1] == Cytokine.TYPE:
                         count_cytos += 1    
@@ -271,7 +314,7 @@ class Microglia(core.Agent):
             for ngh in nghs:
                 at._reset_from_array(ngh)            
                 for obj in grid.get_agents(at):
-                    if obj.uid[1] == Antigen.TYPE:
+                    if obj.uid[1] == Debris.TYPE:
                         count_antigent += 1
 
             if count_antigent >= 2:
@@ -354,24 +397,23 @@ class Neuron(core.Agent):
                     self.is_alive = False
                 elif count_levos <= 5 and (count_deads >= 1 or random.default_rng.integers(0, number_sup) > number_sup - 4):
                     self.is_alpha = True                    
-                
             else:                
-                print(self.num_misfolded/self.num_alpha)
+                # print(self.num_misfolded/self.num_alpha)
                 if (count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.90):
                     self.is_alive = False
                     return (release_antigens, pt)
                 elif (self.alpha_ticks > int(14/(count_levos + 1))) and (float(self.num_misfolded) / float(self.num_alpha) < 0.45):
                     self.is_alpha = False
 
-                self.num_alpha += int(self.num_alpha * random.default_rng.integers(0, 2) / 100)
+                self.num_alpha += int(self.num_alpha * random.default_rng.integers(1, 4) / 100)
 
-                new_misfolded = int((self.num_alpha - self.num_misfolded) * random.default_rng.integers(75, 80) / 100)
+                new_misfolded = int((self.num_alpha - self.num_misfolded) * random.default_rng.integers(35, 40) / 100)
                 if (self.num_misfolded + new_misfolded > self.num_alpha):
                     self.num_misfolded = self.num_alpha
                 else:
                     self.num_misfolded += new_misfolded
 
-                self.num_misfolded -= int(self.num_misfolded * random.default_rng.integers(0, 15) / 100)
+                self.num_misfolded -= int(self.num_misfolded * random.default_rng.integers(0, 25) / 100)
 
                 self.alpha_ticks += 1
 
@@ -391,6 +433,8 @@ class Model:
         self.runner.schedule_stop(params['stop.at'])
         self.runner.schedule_end_event(self.at_end)
 
+        self.BBB = BloodBrainBarrier()
+        
         box = space.BoundingBox(0, params['world.width'], 0, params['world.height'], 0, 0)
         self.brain_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
@@ -461,18 +505,15 @@ class Model:
             
             x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
             y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
+            while (x,y) in self.occupied_periphery_coords:
+                x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
+                y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
 
             if context_id == "BRAIN":
-                while (x,y) in self.occupied_brain_coords:
-                    x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
-                    y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
                 self.contexts["brain"].add(ag)
                 self.move(ag, x, y, "BRAIN")
                 self.occupied_brain_coords.append((x,y))
             elif context_id == "PERIPHERY":
-                while (x,y) in self.occupied_periphery_coords:
-                    x = random.default_rng.integers(local_bounds.xmin, local_bounds.xmin + local_bounds.xextent)
-                    y = random.default_rng.integers(local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
                 self.contexts["peripheral"].add(ag)
                 self.move(ag, x, y, "PERIPHERY")
                 self.occupied_periphery_coords.append((x,y))
@@ -498,6 +539,17 @@ class Model:
         self.contexts["peripheral"].synchronize(restore_periphery_agent)
         self.log_counts(tick)
 
+
+        to_release = self.BBB.release(Antigen.TYPE)
+        loguru.logger.debug("Rank: {}, to_release: {}".format(self.rank, len(to_release)))
+        for item in to_release:
+            antigen, pt = item
+            print("Rank: {}, Antigen: {}, pt: {}".format(self.rank, antigen.uid, pt))
+            self.contexts["peripheral"].add(antigen)
+            self.move(antigen, pt.x, 0, "PERIPHERY")
+            # self.occupied_periphery_coords.append((pt.x, pt.y))
+        # self.BBB.release(TCell.TYPE)
+
         for h in self.contexts["brain"].agents(Neuron.TYPE):
             release_antigen, pt = h.step()
             if release_antigen:
@@ -510,6 +562,16 @@ class Model:
             release_cytos, pt = h.step()
             if release_cytos:
                 self.coords_release_agents(pt, "CYTOKINE")
+        try:                
+            for h in self.contexts["brain"].agents(Antigen.TYPE):
+                pt = self.brain_grid.get_location(h)
+                self.move(h, pt.x, pt.y + 4, "BRAIN")
+                loguru.logger.debug("Rank: {}, Antigen: {}, pt: {}".format(self.rank, h.uid, pt))    
+                if pt.y == 39:               
+                    self.contexts["brain"].remove(h)                    
+                    self.BBB.retain(h, pt, Antigen.TYPE)
+        except:
+            pass
             
 
     def run(self):
@@ -539,7 +601,10 @@ class Model:
             if (x, y) not in self.occupied_brain_coords:           
                 ag = None
                 if agent_type == "ANTIGEN":
-                    ag = Antigen(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+                    if random.default_rng.integers(0, 10) >= 7:
+                        ag = Antigen(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+                    else:    
+                        ag = Debris(((self.rank + 1) * 10000000) + self.id_counter, self.rank)                        
                 elif agent_type == "CYTOKINE":
                     ag = Cytokine(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
 
@@ -559,8 +624,6 @@ class Model:
             saved = ag.save()
             self.brain_data_set.log_row(tick, saved[0][0], saved[0][1], pt.x, pt.y, self.rank)
             if saved[0][1] == Neuron.TYPE:
-                print(saved[1])
-                print(tick, saved[0][0], saved[1], saved[2], saved[3], saved[4], saved[5], self.rank)
                 self.neuron_status_data_set.log_row(tick, saved[0][0], saved[1], saved[2], saved[3], saved[4], saved[5], self.rank)
             elif saved[0][1] == Astrocyte.TYPE:
                  self.astrocyte_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)

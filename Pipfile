@@ -8,6 +8,7 @@ numpy = "*"
 mpi4py = "*"
 numba = "*"
 pandas = "*"
+loguru = "*"
 
 [dev-packages]
 
