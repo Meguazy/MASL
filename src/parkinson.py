@@ -134,6 +134,13 @@ def restore_brain_agent(agent_data: Tuple):
             ag = Cytokine(uid[0], uid[2])
             agent_brain_cache[uid] = ag
             return ag
+    elif uid[1] == Antigen.TYPE:
+        if uid in agent_brain_cache:
+            return agent_brain_cache[uid]
+        else:
+            ag = Antigen(uid[0], uid[2])
+            agent_brain_cache[uid] = ag
+            return ag
 
 agent_periphery_cache = {}  
 def restore_periphery_agent(agent_data: Tuple):
@@ -192,6 +199,7 @@ class Astrocyte(core.Agent):
 
     def __init__(self, a_id: int, rank: int):
         super().__init__(id=a_id, type=Astrocyte.TYPE, rank=rank)
+        self.is_activated = False
 
     def save(self) -> Tuple:
         """Saves the state of this Astrocyte as a Tuple.
@@ -340,30 +348,30 @@ class Neuron(core.Agent):
 
             if self.is_alpha == False:
                 self.alpha_ticks = 0
-                pt = grid.get_location(self)
                 
                 number_sup = 100 * (count_levos + 1)
                 if count_cytos >= 2:
                     self.is_alive = False
-                elif count_levos <= 5 and (count_deads >= 1 or random.default_rng.integers(0, number_sup) > number_sup - 2):
+                elif count_levos <= 5 and (count_deads >= 1 or random.default_rng.integers(0, number_sup) > number_sup - 4):
                     self.is_alpha = True                    
                 
             else:                
-                if (count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.95):
+                print(self.num_misfolded/self.num_alpha)
+                if (count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.90):
                     self.is_alive = False
                     return (release_antigens, pt)
                 elif (self.alpha_ticks > int(14/(count_levos + 1))) and (float(self.num_misfolded) / float(self.num_alpha) < 0.45):
                     self.is_alpha = False
 
-                self.num_alpha += int(self.num_alpha * random.default_rng.integers(10 ,30) / 100)
+                self.num_alpha += int(self.num_alpha * random.default_rng.integers(0, 2) / 100)
 
-                new_misfolded = int((self.num_alpha - self.num_misfolded) * random.default_rng.integers(10, 15) / 100)
+                new_misfolded = int((self.num_alpha - self.num_misfolded) * random.default_rng.integers(75, 80) / 100)
                 if (self.num_misfolded + new_misfolded > self.num_alpha):
                     self.num_misfolded = self.num_alpha
                 else:
                     self.num_misfolded += new_misfolded
 
-                self.num_misfolded -= int(self.num_misfolded * random.default_rng.integers(10, 100) / 100)
+                self.num_misfolded -= int(self.num_misfolded * random.default_rng.integers(0, 15) / 100)
 
                 self.alpha_ticks += 1
 
@@ -399,6 +407,10 @@ class Model:
 
         # self.peripheral_logs = Periphery()
         self.periphery_data_set = logging.TabularLogger(self.comm, params['periphery_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
+
+        self.neuron_status_data_set = logging.TabularLogger(self.comm, params['neuron_status_file'], ["tick", "agent_id", "is_alive", "is_alpha", "num_alpha", "num_misfolded", "alpha_ticks", "rank"], delimiter=",")
+        self.microglia_status_data_set = logging.TabularLogger(self.comm, params['microglia_status_file'], ["tick", "agent_id", "is_activated", "rank"], delimiter=",")
+        self.astrocyte_status_data_set = logging.TabularLogger(self.comm, params['astrocyte_status_file'], ["tick", "agent_id", "is_activated", "rank"], delimiter=",")
 
         world_size = comm.Get_size()
         self.occupied_brain_coords = []
@@ -470,6 +482,9 @@ class Model:
     def at_end(self):
         self.brain_data_set.close()
         self.periphery_data_set.close()
+        self.neuron_status_data_set.close()
+        self.microglia_status_data_set.close() 
+        self.astrocyte_status_data_set.close()
 
     def move(self, agent, x, y, env):
         if(env == "BRAIN"):
@@ -494,7 +509,7 @@ class Model:
         for h in self.contexts["brain"].agents(Astrocyte.TYPE):
             release_cytos, pt = h.step()
             if release_cytos:
-                self.coords_release_agents(pt, "CYTOKINE")                                
+                self.coords_release_agents(pt, "CYTOKINE")
             
 
     def run(self):
@@ -539,9 +554,18 @@ class Model:
         #print(num_agents)
         
         for ag in self.contexts["brain"].agents():
+            
             pt = self.brain_grid.get_location(ag)
-            self.brain_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
-            #print("Tick: {}, x: {}, y: {}, rank: {}".format(tick, pt.x, pt.y, self.rank), flush=True)
+            saved = ag.save()
+            self.brain_data_set.log_row(tick, saved[0][0], saved[0][1], pt.x, pt.y, self.rank)
+            if saved[0][1] == Neuron.TYPE:
+                print(saved[1])
+                print(tick, saved[0][0], saved[1], saved[2], saved[3], saved[4], saved[5], self.rank)
+                self.neuron_status_data_set.log_row(tick, saved[0][0], saved[1], saved[2], saved[3], saved[4], saved[5], self.rank)
+            elif saved[0][1] == Astrocyte.TYPE:
+                 self.astrocyte_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
+            elif saved[0][1] == Microglia.TYPE:
+                 self.microglia_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
         
         for ag in self.contexts["peripheral"].agents():
             pt = self.periphery_grid.get_location(ag)

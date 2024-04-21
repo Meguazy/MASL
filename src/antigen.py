@@ -11,7 +11,7 @@ class Antigen(core.Agent):
         rank: the starting MPI rank of this Antigen.
     """
     # TYPE is a class variable that defines the agent type id the Antigen agent. This is a required part of the unique agent id tuple.
-    TYPE = 1
+    TYPE = 6
 
     def __init__(self, a_id: int, rank: int):
         super().__init__(id=a_id, type=Antigen.TYPE, rank=rank)

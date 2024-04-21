@@ -9,10 +9,13 @@ class AgentMovementApp:
         self.master = master
         self.master.title("Agent Movement Visualization")
 
-        self.canvas = tk.Canvas(self.master, width=400, height=900, bg="white")
+        self.canvas = tk.Canvas(self.master, width=500, height=900, bg="white")
         self.canvas.pack()
 
-        self.canvas.create_rectangle(0, 401, 1600, 499, fill="gray")  # Create a line to separate brain and periphery agents
+        self.canvas.create_rectangle(0, 401, 900, 499, fill="gray")  # Create a line to separate brain and periphery agents
+        self.canvas.create_rectangle(400, 0, 420, 900, fill="black")  # Create a line to separate brain and periphery agents
+
+        self.create_tick_display()  # Create a rectangle to display the current tick number
         
         self.agent_markers = {}  # Dictionary to store agent markers by agent ID
         self.agent_colors = {}  # Dictionary to store agent colors by agent ID
@@ -38,7 +41,7 @@ class AgentMovementApp:
             marker = None
             if agent_type == "red":
                 marker = self.canvas.create_oval(0, 0, 10, 10, fill=agent_type)  # Create marker for each agent ID with color based on agent type
-            elif agent_type == "blue" or agent_type == "green" or agent_type == "yellow":
+            elif agent_type == "blue" or agent_type == "green" or agent_type == "yellow" or agent_type == "#6646e2":
                 marker = self.canvas.create_rectangle(0, 0, 10, 10, fill=agent_type)  # Create marker for each agent ID with color based on agent type
             elif agent_type == "#00ffff":
                 marker = self.canvas.create_polygon(0, 0, 10, 0, 5, 10, fill=agent_type)
@@ -46,7 +49,7 @@ class AgentMovementApp:
 
     def get_agent_colors(self):
         # Assign different colors for each agent type
-        colors = {"0": "red", "1": "yellow", "3": "green", "4": "blue", "5": "#00ffff"}  # Add more agent types and colors as needed
+        colors = {"0": "red", "1": "yellow", "3": "green", "4": "blue", "5": "#00ffff", "6": "#6646e2"}  # Add more agent types and colors as needed
         for agent_id, x, y, agent_type in self.brain_movements:
             if agent_id not in self.agent_colors:
                 self.agent_colors[agent_id] = colors[str(agent_type)]
@@ -54,12 +57,22 @@ class AgentMovementApp:
             if agent_id not in self.agent_colors:
                 self.agent_colors[agent_id] = colors[str(agent_type)]
 
+    def create_tick_display(self):
+        # Create a rectangle to display the current tick number
+        self.tick_display = self.canvas.create_rectangle(430, 10, 480, 40, fill="lightgray")
+        self.tick_text = self.canvas.create_text(455, 25, text=f"Tick: {1}")
+
+    def update_tick_display(self, tick):
+        # Update the tick display with the new tick number
+        self.canvas.itemconfig(self.tick_text, text=f"Tick: {tick}")
+
     def animate_movement(self):
         delay = 0
         max_tick = self.brain_df['tick'].max()
         for tick in range(1, max_tick):
-            if tick > 3:
-                delay = 1000
+            self.update_tick_display(tick)
+            if tick > 1:
+                delay = 300
             tick_previous_df = self.brain_df[self.brain_df['tick'] == tick - 1]
             tick_current_df = self.brain_df[self.brain_df['tick'] == tick]
             brain_tick_df = find_tick_diff(tick_previous_df, tick_current_df)
@@ -70,13 +83,14 @@ class AgentMovementApp:
                 status = row["status"]
                 marker = self.agent_markers[row["agent_id"]]
                 print(marker)
+                
                 if(status == "NEW"):
                     self.canvas.move(marker, row["x_updated"]*10, row["y_updated"]*10)
                 elif(status == "MOVED"):
                     self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, (row["y_updated"] - row["y_initial"])*10)
                 elif(status == "REMOVED"):
                     self.canvas.delete(marker)
-                self.master.after(delay, self.canvas.update())
+                
                 
             if tick == 1:
                 tick_previous_df = self.periphery_df[self.periphery_df['tick'] == tick - 1]
@@ -92,8 +106,8 @@ class AgentMovementApp:
                         self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, ((row["y_updated"] - row["y_initial"])*10)+500)
                     elif(status == "REMOVED"):
                         self.canvas.delete(marker)
-                    self.master.after(0, self.canvas.update())
-
+                        
+            self.master.after(delay, self.canvas.update())
         self.master.mainloop()
         
 

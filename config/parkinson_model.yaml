@@ -1,5 +1,5 @@
 random.seed: 42
-stop.at: 2
+stop.at: 100
 neuron.perc: 5
 microglia.perc: 4
 astrocyte.perc: 13
@@ -11,3 +11,6 @@ world.height: 40
 run.number: 1
 brain_file: './output/brain_set.csv'
 periphery_file: './output/periphery_set.csv'
+neuron_status_file: './output/neuron_status.csv'
+microglia_status_file: './output/microglia_status.csv'
+astrocyte_status_file: './output/astrocyte_status.csv'
