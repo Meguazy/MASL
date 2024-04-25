@@ -1,13 +1,12 @@
+from repast4py import core
+from repast4py.space import DiscretePoint as dpt
 from typing import Tuple
 
-from repast4py import core, random
+from debris import Debris
 
-from repast4py.space import DiscretePoint as dpt
-
-from antigen import Antigen
 
 # Neuron subclasses repast4py.core.Agent. Subclassing Agent is a requirement for all Repast4Py agent implementations.
-class TCell(core.Agent):
+class Microglia(core.Agent):
     """The Cytokine Agent
 
     Args:
@@ -15,10 +14,10 @@ class TCell(core.Agent):
         rank: the starting MPI rank of this Cytokine.
     """
     # TYPE is a class variable that defines the agent type id the Cytokine agent. This is a required part of the unique agent id tuple.
-    TYPE = 5
+    TYPE = 3
 
     def __init__(self, a_id: int, rank: int):
-        super().__init__(id=a_id, type=TCell.TYPE, rank=rank)
+        super().__init__(id=a_id, type=Microglia.TYPE, rank=rank)
         self.is_activated = False
 
     def save(self) -> Tuple:
@@ -29,22 +28,24 @@ class TCell(core.Agent):
         Returns:
             The saved state of this Human.
         """
-        return (self.uid, )
+        return (self.uid, self.is_activated)
     
-    def step(self, model, pt):
-
-        if self.is_activated:
-            if random.default_rng.integers(0, 100) >= 60:
-                model.spawn_th1()
-        else:
-            at = dpt(0, 0)
-            grid = model.periphery_grid
+    def step(self, model):
+        release_cytokine = True
+        grid = model.brain_grid
+        pt = grid.get_location(self)
+        at = dpt(0, 0)
+        count_antigent = 0
+        if self.is_activated == False:
             nghs = model.ngh_finder.find(pt.x, pt.y)
             for ngh in nghs:
-                for ngh in nghs:
-                    at._reset_from_array(ngh)
-                    for obj in grid.get_agents(at):
-                        if obj.uid[1] == Antigen.TYPE:
-                            self.is_activated = True
-                            obj.num_encounters += 1
+                at._reset_from_array(ngh)            
+                for obj in grid.get_agents(at):
+                    if obj.uid[1] == Debris.TYPE:
+                        count_antigent += 1
+
+            if count_antigent >= 2:
+                self.is_activated = True
+                return (release_cytokine, pt)
         
+        return (not release_cytokine, pt)

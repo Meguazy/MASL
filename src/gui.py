@@ -59,7 +59,7 @@ class AgentMovementApp:
 
     def get_agent_colors(self):
         # Assign different colors for each agent type
-        colors = {0: "red", 1: "yellow", 3: "red", 4: "red", 5: "#00ffff", 6: "#6646e2", 7: "#1be8e4"}  # Add more agent types and colors as needed
+        colors = {0: "red", 1: "yellow", 3: "red", 4: "red", 5: "#00ffff", 6: "#6646e2", 7: "#1be8e4", 8: "#80e81b", 9: "#960e85"}  # Add more agent types and colors as needed
         for agent_id, x, y, agent_type in self.brain_movements:
             if agent_id not in self.agent_colors:
                 self.agent_colors[agent_id] = [colors[agent_type], agent_type]
@@ -83,8 +83,10 @@ class AgentMovementApp:
             loguru.logger.debug(f"Starting processing tick {tick}")
 
             self.update_tick_display(tick)
-            if tick > 1:
-                delay = 500  # Delay in milliseconds between ticks
+            if tick == 1:
+                delay = 5000  # Delay in milliseconds between ticks
+            else:
+                delay = 300
 
             brain_tick_df = find_tick_diff(self.brain_df[self.brain_df['tick'] == tick - 1], self.brain_df[self.brain_df['tick'] == tick])
             brain_tick_df_dropped = brain_tick_df.drop(brain_tick_df[brain_tick_df['status'] == 'NOT_CHANGED'].index)
@@ -151,8 +153,6 @@ class AgentMovementApp:
             periphery_tick_df = find_tick_diff(self.periphery_df[self.periphery_df['tick'] == tick - 1], self.periphery_df[self.periphery_df['tick'] == tick])
             periphery_tick_df_dropped = periphery_tick_df.drop(periphery_tick_df[periphery_tick_df['status'] == 'NOT_CHANGED'].index)
             periphery_tick_df_dropped = periphery_tick_df_dropped.reset_index()
-            if tick == 35:
-                periphery_tick_df_dropped.to_csv("periphery_tick_df.csv")
 
             for _, row in periphery_tick_df_dropped.iterrows():
                 status = row["status"]
@@ -161,9 +161,9 @@ class AgentMovementApp:
                     loguru.logger.debug(f"Creating new marker for agent {row['agent_id']}")
                     self.canvas.move(marker, row["x_updated"]*10, (row["y_updated"]*10)+500)
                 elif(status == "MOVED"):
-                    self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, ((row["y_updated"] - row["y_initial"])*10)+500)
+                    self.canvas.move(marker, (row["x_updated"] - row["x_initial"])*10, ((row["y_updated"] - row["y_initial"])*10))
                 elif(status == "REMOVED"):
-                    self.canvas.delete(marker)
+                    self.canvas.move(marker, -row["x_initial"]*10, -(row["y_initial"]*10) - 500)
             
             loguru.logger.debug(f"Finished periphery movement processing for tick {tick}")
 

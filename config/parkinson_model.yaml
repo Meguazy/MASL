@@ -1,10 +1,12 @@
 random.seed: 42
-stop.at: 100
+stop.at: 201
 neuron.perc: 5
 microglia.perc: 4
 astrocyte.perc: 13
 levodopa.perc: 0
-tcells.perc: 15
+tcells.perc: 10
+th2.perc: 4
+th1.perc: 1
 zombie.count: 400
 world.width: 40
 world.height: 40
