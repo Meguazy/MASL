@@ -1,3 +1,4 @@
+import math
 import tkinter as tk
 import pandas as pd
 import loguru
@@ -39,6 +40,22 @@ class AgentMovementApp:
             self.periphery_movements = df[['agent_id', 'x', 'y', 'agent_type']].values.tolist()
         return df    
 
+    # Function to generate the coordinates for a five-pointed star
+    def create_star(self, center_x, center_y, outer_radius, inner_radius):
+        # 10 points: alternating outer and inner vertices
+        points = []
+        angle = -math.pi / 2  # Start at the top
+        step = math.pi / 5  # 36 degrees in radians for each point of the star
+
+        for i in range(10):
+            radius = outer_radius if i % 2 == 0 else inner_radius
+            x = center_x + radius * math.cos(angle)
+            y = center_y + radius * math.sin(angle)
+            points.append((x, y))
+            angle += step
+        
+        return points
+    
     def create_agent_markers(self):
         self.get_agent_colors()
         # print(self.agent_colors)
@@ -59,7 +76,7 @@ class AgentMovementApp:
 
     def get_agent_colors(self):
         # Assign different colors for each agent type
-        colors = {0: "red", 1: "yellow", 3: "red", 4: "red", 5: "#00ffff", 6: "#6646e2", 7: "#1be8e4", 8: "#80e81b", 9: "#960e85"}  # Add more agent types and colors as needed
+        colors = {0: "red", 1: "yellow", 2: "#E08d13", 3: "red", 4: "red", 5: "#00ffff", 6: "#6646e2", 7: "#1be8e4", 8: "#80e81b",9: "#960e85", 10: "#Be25b1"}  # Add more agent types and colors as needed
         for agent_id, x, y, agent_type in self.brain_movements:
             if agent_id not in self.agent_colors:
                 self.agent_colors[agent_id] = [colors[agent_type], agent_type]
@@ -78,13 +95,13 @@ class AgentMovementApp:
 
     def animate_movement(self):
         delay = 0
-        max_tick = self.brain_df['tick'].max()
+        max_tick = int(self.brain_df['tick'].max())
         for tick in range(1, max_tick):
             loguru.logger.debug(f"Starting processing tick {tick}")
 
             self.update_tick_display(tick)
             if tick == 1:
-                delay = 5000  # Delay in milliseconds between ticks
+                delay = 10000  # Delay in milliseconds between ticks
             else:
                 delay = 300
 

@@ -75,7 +75,6 @@ class Neuron(core.Agent):
                 elif count_levos <= 5 and (count_deads >= 1 or random.default_rng.integers(0, number_sup) > number_sup - 4):
                     self.is_alpha = True                    
             else:                
-                # print(self.num_misfolded/self.num_alpha)
                 if count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.90 or count_th1s >= 2:
                     self.is_alive = False
                     return (release_antigens, pt)

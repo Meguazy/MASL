@@ -44,7 +44,7 @@ class TH1(core.Agent):
                     if obj.uid[1] == 0:
                         is_alive = bool(obj.is_alive)
                         if is_alive == True:
-                            self.to_move = True
+                            self.to_move = False
 
 
         if self.to_move:

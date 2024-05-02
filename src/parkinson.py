@@ -22,6 +22,7 @@ from antigen import Antigen
 from astrocyte import Astrocyte
 from cytokine import Cytokine
 from debris import Debris
+from dopamine import Dopamine
 from levodopa import Levodopa
 from microglia import Microglia
 from neuron import Neuron
@@ -167,6 +168,20 @@ def restore_brain_agent(agent_data: Tuple):
         
         t.to_move = agent_data[1]
         return t
+    elif uid[1] == Dopamine.TYPE:
+        if uid in agent_brain_cache:
+            return agent_brain_cache[uid]
+        else:
+            d = Dopamine(uid[0], uid[2])
+            agent_brain_cache[uid] = d
+            return d
+    elif uid[1] == Levodopa.TYPE:
+        if uid in agent_brain_cache:
+            return agent_brain_cache[uid]
+        else:
+            l = Levodopa(uid[0], uid[2])
+            agent_brain_cache[uid] = l
+            return l
 
 agent_periphery_cache = {}  
 def restore_periphery_agent(agent_data: Tuple):
@@ -215,6 +230,20 @@ def restore_periphery_agent(agent_data: Tuple):
             ag = TH2(uid[0], uid[2])
             agent_periphery_cache[uid] = ag
             return ag
+    elif uid[1] == Levodopa.TYPE:
+        if uid in agent_periphery_cache:
+            return agent_periphery_cache[uid]
+        else:
+            ag = Levodopa(uid[0], uid[2])
+            agent_periphery_cache[uid] = ag
+            return ag
+    elif uid[1] == Dopamine.TYPE:
+        if uid in agent_periphery_cache:
+            return agent_periphery_cache[uid]
+        else:
+            ag = Dopamine(uid[0], uid[2])
+            agent_periphery_cache[uid] = ag
+            return ag
 
 
 @dataclass
@@ -241,12 +270,15 @@ class BloodBrainBarrier():
     def __init__(self):
         self.retained_antigens = []
         self.retained_th1s = []
+        self.retained_levodopa = []
 
     def retain(self, ag, pt, type):
         if type == Antigen.TYPE:
             self.retained_antigens.append((ag, pt))
         elif type == TH1.TYPE:
             self.retained_th1s.append((ag, pt))
+        elif type == Levodopa.TYPE:
+            self.retained_levodopa.append((ag, pt))
     
     def release(self, agent_type: int):
         to_release = []
@@ -256,6 +288,9 @@ class BloodBrainBarrier():
         elif agent_type == TH1.TYPE:
             to_release = self.retained_th1s.copy()
             self.retained_th1s = []
+        elif agent_type == Levodopa.TYPE:
+            to_release = self.retained_levodopa.copy()
+            self.retained_levodopa = []
 
         return to_release
 
@@ -278,9 +313,9 @@ class Model:
         
         box = space.BoundingBox(0, params['world.width'], 0, params['world.height'], 0, 0)
         self.brain_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
-                                     buffer_size=1, comm=comm)
+                                     buffer_size=2, comm=comm)
         self.periphery_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
-                                     buffer_size=1, comm=comm)
+                                     buffer_size=2, comm=comm)
         self.contexts["brain"].add_projection(self.brain_grid)
         self.contexts["peripheral"].add_projection(self.periphery_grid)
         
@@ -302,6 +337,8 @@ class Model:
         self.occupied_periphery_coords = []
         random.init(self.rank)
 
+        self.brain_dopamine = 0
+        self.carbidopa_effectiveness = params['carbidopa.effectiveness']
         self.id_counter = 0
         # Adding Neurons to the environment
         self.setup(Neuron.TYPE, params, "neuron.perc", "BRAIN")
@@ -320,7 +357,13 @@ class Model:
 
         # Adding TH2s to the environment
         self.setup(TH2.TYPE, params, "th2.perc", "PERIPHERY") 
-        
+
+        if self.rank == 1 or self.rank == 3:
+            # Adding Levodopa to the environment
+            self.setup(Levodopa.TYPE, params, "levodopa.perc", "PERIPHERY")
+    
+    def get_carbidopa_perc(self):
+        return self.carbidopa_effectiveness
 
     def setup(self, agent_type, params, param, env):
         total_count = int((params['world.width'] * params['world.height']) * params[param] / 100)
@@ -345,6 +388,8 @@ class Model:
                 ag = TH1(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
             elif type == TH2.TYPE:
                 ag = TH2(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+            elif type == Levodopa.TYPE:
+                ag = Levodopa(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
             
             x, y = self.generate_coords(context_id, local_bounds.xmin, local_bounds.xmin + local_bounds.xextent, local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
 
@@ -389,9 +434,15 @@ class Model:
             th1, pt = item
             self.contexts["brain"].add(th1)
             self.move(th1, pt.x, 39, "BRAIN")
+
+        #to_release = self.BBB.release(Levodopa.TYPE)
+        #for item in to_release:
+        #    levodopa, pt = item
+        #    self.contexts["brain"].add(levodopa)
+        #    self.move(levodopa, pt.x, 39, "BRAIN")
         
         for ag in self.contexts["brain"].agents(Neuron.TYPE):
-            release_antigen, pt = ag.step(model)
+            release_antigen, pt = ag.step(model, self.brain_dopamine)
             if release_antigen:
                 self.coords_release_agents(pt, "ANTIGEN")
 
@@ -405,10 +456,6 @@ class Model:
             if release_cytos:
                 self.coords_release_agents(pt, "CYTOKINE")
 
-        for ag in self.contexts["peripheral"].agents(TCell.TYPE):
-            pt = self.periphery_grid.get_location(ag)
-            ag.step(model, pt)
-
         try:                
             for ag in self.contexts["brain"].agents(Antigen.TYPE):
                 pt = self.brain_grid.get_location(ag)
@@ -416,7 +463,10 @@ class Model:
                     self.contexts["brain"].remove(ag)                    
                     self.BBB.retain(ag, pt, Antigen.TYPE)
                 self.move(ag, pt.x, pt.y + 4, "BRAIN")
-     
+        except:
+            pass
+        
+        try:
             for ag in self.contexts["peripheral"].agents(Antigen.TYPE):
                 pt = self.periphery_grid.get_location(ag)
                 ag.walk(pt, model)
@@ -425,30 +475,61 @@ class Model:
               
         try:
             nums = self.contexts["peripheral"].size([TH1.TYPE, TH2.TYPE])
+            print(nums[TH1.TYPE]/nums[TH2.TYPE], self.rank, tick)
             if (nums[TH1.TYPE] / nums[TH2.TYPE]) > 1:
-                for ag in self.contexts["peripheral"].agents(TH1.TYPE):
-                    pt = self.periphery_grid.get_location(ag)
-                    
-                    if pt.y == 0:
-                        self.contexts["peripheral"].remove(ag)
-                        self.BBB.retain(ag, pt, TH1.TYPE)
-                    
-                    self.move(ag, pt.x, pt.y - 2, "PERIPHERY")
-            
+                dict = list(self.contexts["peripheral"].agents(TH1.TYPE)).copy()
+                for ag in dict:
+                    if ag.uid[1] == TH1.TYPE:
+                        pt = self.periphery_grid.get_location(ag)
+                        # print(ag.save(), pt, self.rank)
+                        if pt.y == 0:
+                                self.contexts["peripheral"].remove(ag)
+                                self.BBB.retain(ag, pt, TH1.TYPE)
+                        else:
+                                self.move(ag, pt.x, pt.y - 2, "PERIPHERY")
+        except:
+            print("Error")
+
+        try:
             for ag in self.contexts["brain"].agents():
-                pt = self.brain_grid.get_location(ag)
-                if self.rank == 2:
-                    print(ag.save(), pt, tick)
-                ag.walk(model, pt)
+                if ag.save()[0][1] == TH1.TYPE:
+                    pt = self.brain_grid.get_location(ag)
+                    ag.walk(model, pt)
         except:
             pass
-        
+
+        for ag in self.contexts["peripheral"].agents(TCell.TYPE):
+            pt = self.periphery_grid.get_location(ag)
+            ag.step(model, pt)
+
+        to_turn = []
+        try:
+            for ag in self.contexts["peripheral"].agents(Levodopa.TYPE):
+                pt = self.periphery_grid.get_location(ag)
+                turn = ag.step(model, pt)
+                if turn:
+                    to_turn.append(ag)
+                elif pt.y == 0:
+                    self.remove_agent(ag, "PERIPHERY")
+                    self.BBB.retain(ag, pt, Levodopa.TYPE)
+
+            for agent in to_turn:
+                pt = self.periphery_grid.get_location(agent)
+                self.remove_agent(agent, "PERIPHERY")
+                self.spawn_dopamine(pt)
+                self.brain_dopamine += 1 
+        except:
+            pass
+
 
     def run(self):
         self.runner.execute()
     
-    def remove_agent(self, agent):
-        self.contexts["brain"].remove(agent)
+    def remove_agent(self, agent, env):
+        if env == "PERIPHERY":
+            self.contexts["peripheral"].remove(agent)
+        elif env == "BRAIN":
+            self.contexts["brain"].remove(agent)
 
     def stick_coordinates(self, coord):
         c = coord
@@ -488,6 +569,12 @@ class Model:
         x, y = self.generate_coords("PERIPHERY", 0, 39, 0, 39)
         self.move(ag, x, y, "PERIPHERY")
         self.occupied_periphery_coords.append((x, y))
+        self.id_counter += 1
+    
+    def spawn_dopamine(self, pt):
+        ag = Dopamine(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+        self.contexts["peripheral"].add(ag)
+        self.move(ag, pt.x, pt.y, "PERIPHERY")
         self.id_counter += 1
 
     def generate_coords(self, context_id, x_min, x_max, y_min, y_max):

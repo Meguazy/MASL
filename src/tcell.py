@@ -5,6 +5,7 @@ from repast4py import core, random
 from repast4py.space import DiscretePoint as dpt
 
 from antigen import Antigen
+from dopamine import Dopamine
 
 # Neuron subclasses repast4py.core.Agent. Subclassing Agent is a requirement for all Repast4Py agent implementations.
 class TCell(core.Agent):
@@ -34,7 +35,7 @@ class TCell(core.Agent):
     def step(self, model, pt):
 
         if self.is_activated:
-            if random.default_rng.integers(0, 100) >= 60:
+            if random.default_rng.integers(0, 100) >= 90:
                 model.spawn_th1()
         else:
             at = dpt(0, 0)
@@ -47,4 +48,6 @@ class TCell(core.Agent):
                         if obj.uid[1] == Antigen.TYPE:
                             self.is_activated = True
                             obj.num_encounters += 1
+                        elif obj.uid[1] == Dopamine.TYPE:
+                            self.is_activated = True
         

@@ -1,12 +1,13 @@
 random.seed: 42
-stop.at: 201
+stop.at: 175
 neuron.perc: 5
 microglia.perc: 4
 astrocyte.perc: 13
-levodopa.perc: 0
+levodopa.perc: 15
 tcells.perc: 10
 th2.perc: 4
 th1.perc: 1
+carbidopa.effectiveness: 0.6
 zombie.count: 400
 world.width: 40
 world.height: 40
