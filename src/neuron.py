@@ -43,11 +43,12 @@ class Neuron(core.Agent):
     # See the comments on the Zombie class for more informations.
     def step(self, model):
         release_antigens = True
+        dopamine_effectiveness = float(model.getDopamineEffectiveness())
         grid = model.brain_grid
         pt = grid.get_location(self)
         at = dpt(0, 0)
         count_cytos, count_levos, count_deads, count_th1s = 0, 0, 0, 0
-        if self.is_alive:            
+        if self.is_alive:
             nghs = model.ngh_finder.find(pt.x, pt.y)
             for ngh in nghs:
                 at._reset_from_array(ngh)            
@@ -78,7 +79,7 @@ class Neuron(core.Agent):
                 if count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.90 or count_th1s >= 2:
                     self.is_alive = False
                     return (release_antigens, pt)
-                elif (self.alpha_ticks > int(14/(count_levos + 1))) and (float(self.num_misfolded) / float(self.num_alpha) < 0.45):
+                elif (self.alpha_ticks > 14) and ((float(self.num_misfolded) / float(self.num_alpha) < 0.45) or (random.default_rng.integers(0, 100) < dopamine_effectiveness * 100)):
                     self.is_alpha = False
 
                 self.num_alpha += int(self.num_alpha * random.default_rng.integers(1, 4) / 100)

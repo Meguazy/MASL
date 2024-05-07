@@ -14,8 +14,10 @@ class Levodopa(core.Agent):
     # TYPE is a class variable that defines the agent type id the Levodopa agent. This is a required part of the unique agent id tuple.
     TYPE = 2
 
-    def __init__(self, a_id: int, rank: int):
+    def __init__(self, a_id: int, rank: int, carbidopa_perc: float):
         super().__init__(id=a_id, type=Levodopa.TYPE, rank=rank)
+        self.sup_number = 90 
+        self.carbidopa_sup = self.sup_number + int((100 - self.sup_number) * carbidopa_perc)
 
     def save(self) -> Tuple:
         """Saves the state of this Levodopa as a Tuple.
@@ -29,8 +31,8 @@ class Levodopa(core.Agent):
     
     def step(self, model, pt):
         turn = True
-        sup_number = 85
-        if random.default_rng.integers(0, 100) >=  sup_number + int(sup_number * (10 * model.get_carbidopa_perc()) / 100):
+
+        if random.default_rng.integers(0, 100) >=  self.carbidopa_sup:
             return turn
         else:
             model.move(self, pt.x, pt.y - 3, "PERIPHERY")

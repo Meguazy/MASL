@@ -234,7 +234,7 @@ def restore_periphery_agent(agent_data: Tuple):
         if uid in agent_periphery_cache:
             return agent_periphery_cache[uid]
         else:
-            ag = Levodopa(uid[0], uid[2])
+            ag = Levodopa(uid[0], uid[2], model.get_carbidopa_perc())
             agent_periphery_cache[uid] = ag
             return ag
     elif uid[1] == Dopamine.TYPE:
@@ -301,6 +301,8 @@ class Model:
         self.comm = comm
         self.contexts["brain"] = ctx.SharedContext(comm)
         self.contexts["peripheral"] = ctx.SharedContext(comm)
+
+        
         
         self.rank = self.comm.Get_rank()
 
@@ -340,8 +342,10 @@ class Model:
         self.brain_dopamine = 0
         self.carbidopa_effectiveness = params['carbidopa.effectiveness']
         self.id_counter = 0
+        self.dopamine_effectiveness = params['dopamine.effectiveness']
         # Adding Neurons to the environment
         self.setup(Neuron.TYPE, params, "neuron.perc", "BRAIN")
+        self.num_neurons = int((params['world.width'] * params['world.height']) * params["neuron.perc"] / 100)
 
         # Adding Microglia to the environment
         self.setup(Microglia.TYPE, params, "microglia.perc", "BRAIN")
@@ -389,7 +393,7 @@ class Model:
             elif type == TH2.TYPE:
                 ag = TH2(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
             elif type == Levodopa.TYPE:
-                ag = Levodopa(((self.rank + 1) * 10000000) + self.id_counter, self.rank)
+                ag = Levodopa(((self.rank + 1) * 10000000) + self.id_counter, self.rank, self.get_carbidopa_perc())
             
             x, y = self.generate_coords(context_id, local_bounds.xmin, local_bounds.xmin + local_bounds.xextent, local_bounds.ymin, local_bounds.ymin + local_bounds.yextent)
 
@@ -442,7 +446,7 @@ class Model:
         #    self.move(levodopa, pt.x, 39, "BRAIN")
         
         for ag in self.contexts["brain"].agents(Neuron.TYPE):
-            release_antigen, pt = ag.step(model, self.brain_dopamine)
+            release_antigen, pt = ag.step(model)
             if release_antigen:
                 self.coords_release_agents(pt, "ANTIGEN")
 
@@ -475,7 +479,6 @@ class Model:
               
         try:
             nums = self.contexts["peripheral"].size([TH1.TYPE, TH2.TYPE])
-            print(nums[TH1.TYPE]/nums[TH2.TYPE], self.rank, tick)
             if (nums[TH1.TYPE] / nums[TH2.TYPE]) > 1:
                 dict = list(self.contexts["peripheral"].agents(TH1.TYPE)).copy()
                 for ag in dict:
@@ -503,8 +506,9 @@ class Model:
             ag.step(model, pt)
 
         to_turn = []
-        try:
-            for ag in self.contexts["peripheral"].agents(Levodopa.TYPE):
+        dict2 = list(self.contexts["peripheral"].agents()).copy()
+        for ag in dict2:
+            if ag.save()[0][1] == Levodopa.TYPE:
                 pt = self.periphery_grid.get_location(ag)
                 turn = ag.step(model, pt)
                 if turn:
@@ -512,14 +516,23 @@ class Model:
                 elif pt.y == 0:
                     self.remove_agent(ag, "PERIPHERY")
                     self.BBB.retain(ag, pt, Levodopa.TYPE)
-
+                    self.brain_dopamine += 2.5
+                    """aa = self.getDopamineEffectiveness()
+                    if self.rank == 1 or self.rank == 3:
+                        if self.dopamine_effectiveness < 0.75:
+                            self.dopamine_effectiveness = self.brain_dopamine / self.num_neurons
+                        self.comm.bcast(self.dopamine_effectiveness, root=1)"""
+                        
+        
+        try:
             for agent in to_turn:
                 pt = self.periphery_grid.get_location(agent)
                 self.remove_agent(agent, "PERIPHERY")
                 self.spawn_dopamine(pt)
-                self.brain_dopamine += 1 
+                
         except:
-            pass
+            loguru.logger.error("Error in Levodopa conversion step")
+        loguru.logger.info(f"Dopamine effectiveness: {self.getDopamineEffectiveness()}")
 
 
     def run(self):
@@ -611,7 +624,9 @@ class Model:
         for ag in self.contexts["peripheral"].agents():
             pt = self.periphery_grid.get_location(ag)
             self.periphery_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
-
+    
+    def getDopamineEffectiveness(self):
+        return self.dopamine_effectiveness
 
 def run(params: Dict):
     """Creates and runs the Zombies Model.

@@ -21,6 +21,7 @@ class TCell(core.Agent):
     def __init__(self, a_id: int, rank: int):
         super().__init__(id=a_id, type=TCell.TYPE, rank=rank)
         self.is_activated = False
+        self.is_dopamine_activated = False
 
     def save(self) -> Tuple:
         """Saves the state of this Human as a Tuple.
@@ -33,9 +34,12 @@ class TCell(core.Agent):
         return (self.uid, )
     
     def step(self, model, pt):
-
+        
         if self.is_activated:
             if random.default_rng.integers(0, 100) >= 90:
+                model.spawn_th1()
+        elif self.is_dopamine_activated:
+            if random.default_rng.integers(0, 100) >= 98:
                 model.spawn_th1()
         else:
             at = dpt(0, 0)
@@ -49,5 +53,5 @@ class TCell(core.Agent):
                             self.is_activated = True
                             obj.num_encounters += 1
                         elif obj.uid[1] == Dopamine.TYPE:
-                            self.is_activated = True
+                            self.is_dopamine_activated = True
         
