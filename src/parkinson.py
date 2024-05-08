@@ -251,18 +251,8 @@ class Neurons:
     """Dataclass used by repast4py aggregate logging to record
     the number of Humans and Zombies after each tick.
     """
-    x: int = 0
-    y: int = 0
-    rank: int = 0
-
-@dataclass
-class Periphery:
-    """Dataclass used by repast4py aggregate logging to record
-    the number of Humans and Zombies after each tick.
-    """
-    x: int = 0
-    y: int = 0
-    rank: int = 0
+    num_deads: int = 0
+    num_alphas: int = 0
 
 
 class BloodBrainBarrier():
@@ -302,8 +292,6 @@ class Model:
         self.contexts["brain"] = ctx.SharedContext(comm)
         self.contexts["peripheral"] = ctx.SharedContext(comm)
 
-        
-        
         self.rank = self.comm.Get_rank()
 
         self.runner = schedule.init_schedule_runner(comm)
@@ -316,6 +304,7 @@ class Model:
         box = space.BoundingBox(0, params['world.width'], 0, params['world.height'], 0, 0)
         self.brain_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
+        
         self.periphery_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
         self.contexts["brain"].add_projection(self.brain_grid)
@@ -323,8 +312,12 @@ class Model:
         
         self.ngh_finder = GridNghFinder(0, 0, box.xextent, box.yextent)
 
-        #self.neurons = Neurons()
-        #loggers = logging.create_loggers(self.neurons, op=MPI.SUM, rank=self.rank)
+        self.neurons = Neurons()
+        # The names argument is not specified, so the Counts field names will be used as column headers.
+        loggers = logging.create_loggers(self.neurons, op=MPI.SUM, rank=self.rank)
+        # Create a logging.ReducingDataSet from the list of loggers. params['counts_file'] is the name of the file to log to.
+        self.data_set = logging.ReducingDataSet(loggers, self.comm, params['counts_file'])
+
         self.brain_data_set = logging.TabularLogger(self.comm, params['brain_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
 
         # self.peripheral_logs = Periphery()
@@ -414,6 +407,7 @@ class Model:
         self.neuron_status_data_set.close()
         self.microglia_status_data_set.close()
         self.astrocyte_status_data_set.close()
+        self.data_set.close()
 
     def move(self, agent, x, y, env):
         if(env == "BRAIN"):
@@ -438,12 +432,6 @@ class Model:
             th1, pt = item
             self.contexts["brain"].add(th1)
             self.move(th1, pt.x, 39, "BRAIN")
-
-        #to_release = self.BBB.release(Levodopa.TYPE)
-        #for item in to_release:
-        #    levodopa, pt = item
-        #    self.contexts["brain"].add(levodopa)
-        #    self.move(levodopa, pt.x, 39, "BRAIN")
         
         for ag in self.contexts["brain"].agents(Neuron.TYPE):
             release_antigen, pt = ag.step(model)
@@ -609,12 +597,19 @@ class Model:
         #num_agents = self.context.size([Neuron.TYPE])#, Cytokine.TYPE])
         #self.counts.zombies = num_agents[Cytokine.TYPE]
         #print(num_agents)
+
+        num_deads = 0
+        num_alphas = 0
         
         for ag in self.contexts["brain"].agents():
             pt = self.brain_grid.get_location(ag)
             saved = ag.save()
             self.brain_data_set.log_row(tick, saved[0][0], saved[0][1], pt.x, pt.y, self.rank)
             if saved[0][1] == Neuron.TYPE:
+                if not saved[1]:
+                    num_deads += 1
+                if saved[2]:
+                    num_alphas += 1
                 self.neuron_status_data_set.log_row(tick, saved[0][0], saved[1], saved[2], saved[3], saved[4], saved[5], self.rank)
             elif saved[0][1] == Astrocyte.TYPE:
                  self.astrocyte_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
@@ -624,6 +619,10 @@ class Model:
         for ag in self.contexts["peripheral"].agents():
             pt = self.periphery_grid.get_location(ag)
             self.periphery_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
+
+        self.neurons.num_deads = num_deads
+        self.neurons.num_alphas = num_alphas
+        self.data_set.log(tick)
     
     def getDopamineEffectiveness(self):
         return self.dopamine_effectiveness

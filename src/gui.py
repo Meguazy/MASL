@@ -76,7 +76,7 @@ class AgentMovementApp:
 
     def get_agent_colors(self):
         # Assign different colors for each agent type
-        colors = {0: "red", 1: "yellow", 2: "#E08d13", 3: "red", 4: "red", 5: "#00ffff", 6: "#6646e2", 7: "#1be8e4", 8: "#80e81b",9: "#960e85", 10: "#Be25b1"}  # Add more agent types and colors as needed
+        colors = {0: "red", 1: "yellow", 2: "#E08d13", 3: "red", 4: "red", 5: "#00ffff", 6: "#6646e2", 7: "#1be8e4", 8: "#80e81b",9: "#960e85", 10: "red"}  # Add more agent types and colors as needed
         for agent_id, x, y, agent_type in self.brain_movements:
             if agent_id not in self.agent_colors:
                 self.agent_colors[agent_id] = [colors[agent_type], agent_type]

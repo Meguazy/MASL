@@ -33,6 +33,7 @@ class TCell(core.Agent):
         """
         return (self.uid, )
     
+    # T-Cells step method is used to check if the T-Cell has encountered an Antigen or Dopamine
     def step(self, model, pt):
         
         if self.is_activated:
