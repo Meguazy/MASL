@@ -3,12 +3,12 @@ stop.at: 151
 neuron.perc: 5
 microglia.perc: 4
 astrocyte.perc: 13
-levodopa.perc: 0
+levodopa.perc: 15
 tcells.perc: 10
 th2.perc: 4
 th1.perc: 1
-carbidopa.effectiveness: 0
-dopamine.effectiveness: 0
+carbidopa.effectiveness: 0.8
+dopamine.effectiveness: 0.5
 zombie.count: 400
 world.width: 40
 world.height: 40
