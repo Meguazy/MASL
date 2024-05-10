@@ -288,6 +288,7 @@ class BloodBrainBarrier():
 class Model:
     contexts = {}
     def __init__(self, comm, params):
+        self.params = params
         self.comm = comm
         self.contexts["brain"] = ctx.SharedContext(comm)
         self.contexts["peripheral"] = ctx.SharedContext(comm)
@@ -304,6 +305,7 @@ class Model:
         box = space.BoundingBox(0, params['world.width'], 0, params['world.height'], 0, 0)
         self.brain_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
+        
         
         self.periphery_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
@@ -454,7 +456,7 @@ class Model:
                 if pt.y == 39:               
                     self.contexts["brain"].remove(ag)                    
                     self.BBB.retain(ag, pt, Antigen.TYPE)
-                self.move(ag, pt.x, pt.y + 4, "BRAIN")
+                self.move(ag, pt.x, pt.y + int(self.params["world.height"]/10), "BRAIN")
         except:
             pass
         
@@ -477,7 +479,7 @@ class Model:
                                 self.contexts["peripheral"].remove(ag)
                                 self.BBB.retain(ag, pt, TH1.TYPE)
                         else:
-                                self.move(ag, pt.x, pt.y - 2, "PERIPHERY")
+                                self.move(ag, pt.x, pt.y - int(self.params["world.height"]/20), "PERIPHERY")
         except:
             print("Error")
 
@@ -498,18 +500,13 @@ class Model:
         for ag in dict2:
             if ag.save()[0][1] == Levodopa.TYPE:
                 pt = self.periphery_grid.get_location(ag)
-                turn = ag.step(model, pt)
+                turn = ag.step(model, pt, self.params["world.height"])
                 if turn:
                     to_turn.append(ag)
                 elif pt.y == 0:
                     self.remove_agent(ag, "PERIPHERY")
                     self.BBB.retain(ag, pt, Levodopa.TYPE)
                     self.brain_dopamine += 2.5
-                    """aa = self.getDopamineEffectiveness()
-                    if self.rank == 1 or self.rank == 3:
-                        if self.dopamine_effectiveness < 0.75:
-                            self.dopamine_effectiveness = self.brain_dopamine / self.num_neurons
-                        self.comm.bcast(self.dopamine_effectiveness, root=1)"""
                         
         
         try:

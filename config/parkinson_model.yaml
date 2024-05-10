@@ -9,7 +9,6 @@ th2.perc: 4
 th1.perc: 1
 carbidopa.effectiveness: 0.8
 dopamine.effectiveness: 0.5
-zombie.count: 400
 world.width: 40
 world.height: 40
 run.number: 1

@@ -29,11 +29,11 @@ class Levodopa(core.Agent):
         """
         return (self.uid, )
     
-    def step(self, model, pt):
+    def step(self, model, pt, height):
         turn = True
 
         if random.default_rng.integers(0, 100) >=  self.carbidopa_sup:
             return turn
         else:
-            model.move(self, pt.x, pt.y - 3, "PERIPHERY")
+            model.move(self, pt.x, pt.y - int(height/13), "PERIPHERY")
             return not turn
