@@ -7,7 +7,7 @@ levodopa.perc: 15
 tcells.perc: 10
 th2.perc: 4
 th1.perc: 1
-carbidopa.effectiveness: 0.8
+carbidopa.effectiveness: 0.9
 dopamine.effectiveness: 0.5
 world.width: 40
 world.height: 40

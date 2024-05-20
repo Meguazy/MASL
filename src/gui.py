@@ -39,22 +39,7 @@ class AgentMovementApp:
             self.periphery_agents = df['agent_id'].unique()  # Get unique agent IDs        
             self.periphery_movements = df[['agent_id', 'x', 'y', 'agent_type']].values.tolist()
         return df    
-
-    # Function to generate the coordinates for a five-pointed star
-    def create_star(self, center_x, center_y, outer_radius, inner_radius):
-        # 10 points: alternating outer and inner vertices
-        points = []
-        angle = -math.pi / 2  # Start at the top
-        step = math.pi / 5  # 36 degrees in radians for each point of the star
-
-        for i in range(10):
-            radius = outer_radius if i % 2 == 0 else inner_radius
-            x = center_x + radius * math.cos(angle)
-            y = center_y + radius * math.sin(angle)
-            points.append((x, y))
-            angle += step
-        
-        return points
+    
     
     def create_agent_markers(self):
         self.get_agent_colors()

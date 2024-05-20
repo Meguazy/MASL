@@ -26,12 +26,3 @@ class Dopamine(core.Agent):
             The saved state of this Dopamine.
         """
         return (self.uid, )
-    
-    def step(self, model, pt):
-        turn = True
-
-        if random.default_rng.integers(0, 100) >=  60:
-            return turn
-        else:
-            model.move(self, pt.x, pt.y - 2, "PERIPHERY")
-            return not turn

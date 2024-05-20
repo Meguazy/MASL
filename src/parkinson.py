@@ -303,12 +303,15 @@ class Model:
         self.BBB = BloodBrainBarrier()
         
         box = space.BoundingBox(0, params['world.width'], 0, params['world.height'], 0, 0)
-        self.brain_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
+
+        self.brain_grid = space.SharedGrid('grid', bounds=box, 
+                                     borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
         
-        
-        self.periphery_grid = space.SharedGrid('grid', bounds=box, borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
+        self.periphery_grid = space.SharedGrid('grid', bounds=box, 
+                                     borders=BorderType.Sticky, occupancy=OccupancyType.Multiple,
                                      buffer_size=2, comm=comm)
+        
         self.contexts["brain"].add_projection(self.brain_grid)
         self.contexts["peripheral"].add_projection(self.periphery_grid)
         
@@ -319,12 +322,8 @@ class Model:
         loggers = logging.create_loggers(self.neurons, op=MPI.SUM, rank=self.rank)
         # Create a logging.ReducingDataSet from the list of loggers. params['counts_file'] is the name of the file to log to.
         self.data_set = logging.ReducingDataSet(loggers, self.comm, params['counts_file'])
-
         self.brain_data_set = logging.TabularLogger(self.comm, params['brain_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
-
-        # self.peripheral_logs = Periphery()
         self.periphery_data_set = logging.TabularLogger(self.comm, params['periphery_file'], ["tick", "agent_id", "agent_type", "x", "y", "rank"], delimiter=",")
-
         self.neuron_status_data_set = logging.TabularLogger(self.comm, params['neuron_status_file'], ["tick", "agent_id", "is_alive", "is_alpha", "num_alpha", "num_misfolded", "alpha_ticks", "rank"], delimiter=",")
         self.microglia_status_data_set = logging.TabularLogger(self.comm, params['microglia_status_file'], ["tick", "agent_id", "is_activated", "rank"], delimiter=",")
         self.astrocyte_status_data_set = logging.TabularLogger(self.comm, params['astrocyte_status_file'], ["tick", "agent_id", "is_activated", "rank"], delimiter=",")
@@ -335,8 +334,8 @@ class Model:
         random.init(self.rank)
 
         self.brain_dopamine = 0
-        self.carbidopa_effectiveness = params['carbidopa.effectiveness']
         self.id_counter = 0
+        self.carbidopa_effectiveness = params['carbidopa.effectiveness']
         self.dopamine_effectiveness = params['dopamine.effectiveness']
         # Adding Neurons to the environment
         self.setup(Neuron.TYPE, params, "neuron.perc", "BRAIN")
@@ -360,7 +359,7 @@ class Model:
         if self.rank == 1 or self.rank == 3:
             # Adding Levodopa to the environment
             self.setup(Levodopa.TYPE, params, "levodopa.perc", "PERIPHERY")
-    
+
     def get_carbidopa_perc(self):
         return self.carbidopa_effectiveness
 
@@ -609,9 +608,9 @@ class Model:
                     num_alphas += 1
                 self.neuron_status_data_set.log_row(tick, saved[0][0], saved[1], saved[2], saved[3], saved[4], saved[5], self.rank)
             elif saved[0][1] == Astrocyte.TYPE:
-                 self.astrocyte_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
+                    self.astrocyte_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
             elif saved[0][1] == Microglia.TYPE:
-                 self.microglia_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
+                    self.microglia_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
         
         for ag in self.contexts["peripheral"].agents():
             pt = self.periphery_grid.get_location(ag)

@@ -78,6 +78,7 @@ class Neuron(core.Agent):
             else:                
                 if count_cytos >= 2 or (self.num_misfolded / self.num_alpha) > 0.90 or count_th1s >= 2:
                     self.is_alive = False
+                    self.is_alpha = False
                     return (release_antigens, pt)
                 elif (self.alpha_ticks > 12) and ((float(self.num_misfolded) / float(self.num_alpha) < 0.45) or (random.default_rng.integers(0, 100) < dopamine_effectiveness * 100)):
                     self.is_alpha = False
