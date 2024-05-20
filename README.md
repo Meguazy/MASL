@@ -6,3 +6,24 @@ The goal of this project was to create a MAS simulator using Repast4Py that is a
 - Without levodopa and without carbidopa;
 - With levodopa but without carbidopa;
 - With both levodopa and carbidopa.
+
+## How to use
+Python 3.8 or above is a requirement.
+
+In order to setup this project on your machine, you first have to configure and install Repast4Py on your machine. This can be easily done by following this [Repast4Py installation guide](https://repast.github.io/repast4py.site/guide/user_guide.html#_getting_started).
+Then, you can just install all of the python3 dependencies by running the command
+```
+pip install -r requirements.txt
+```
+or by installing the requirements using another python container such as _venv_ or _conda_.
+
+## How to run the simulation and the GUI
+In order to run the simulation you have to use the following command
+```
+mpirun -n 4 python src/parkinson.py config/parkinson_model.yaml
+```
+This will generate some CSV files than will be then used by the GUI to animate the simulation. To run the GUI, just use
+```
+python3 src/gui.py
+```
+Remember to clean the /output folder each and everytime you need to run the simulation, since the CSV files won't update automatically.
