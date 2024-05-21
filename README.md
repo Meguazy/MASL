@@ -10,7 +10,7 @@ The goal of this project was to create a MAS simulator using Repast4Py that is a
 ## How to use
 Python 3.8 or above is a requirement.
 
-In order to setup this project on your machine, you first have to configure and install Repast4Py on your machine. This can be easily done by following this [Repast4Py installation guide](https://repast.github.io/repast4py.site/guide/user_guide.html#_getting_started).
+In order to setup this project on your machine, you first have to configure and install Repast4Py. This can be easily done by following this [Repast4Py installation guide](https://repast.github.io/repast4py.site/guide/user_guide.html#_getting_started).
 Then, you can just install all of the python3 dependencies by running the command
 ```
 pip install -r requirements.txt
@@ -22,8 +22,8 @@ In order to run the simulation you have to use the following command
 ```
 mpirun -n 4 python src/parkinson.py config/parkinson_model.yaml
 ```
-This will generate some CSV files than will be then used by the GUI to animate the simulation. To run the GUI, just use
+This will generate some CSV files in the output/ folder that will be then used by the GUI to animate the simulation. To run the GUI, run
 ```
 python3 src/gui.py
 ```
-Remember to clean the /output folder each and everytime you need to run the simulation, since the CSV files won't update automatically.
+Remember to clean the /output folder each and everytime you need to re-run the simulation, since the CSV files won't update automatically.
