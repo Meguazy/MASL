@@ -20,7 +20,7 @@ or by installing the requirements using another python container such as _venv_ 
 ## How to run the simulation and the GUI
 In order to run the simulation you have to use the following command
 ```
-mpirun -n 4 python src/parkinson.py config/parkinson_model.yaml
+mpirun -n 4 python3 src/parkinson.py config/parkinson_model.yaml
 ```
 This will generate some CSV files in the output/ folder that will be then used by the GUI to animate the simulation. To run the GUI, run
 ```
