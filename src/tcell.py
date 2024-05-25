@@ -31,7 +31,7 @@ class TCell(core.Agent):
         Returns:
             The saved state of this TCell.
         """
-        return (self.uid, )
+        return (self.uid, self.is_activated, self.is_dopamine_activated)
     
     # T-Cells step method is used to check if the T-Cell has encountered an Antigen or Dopamine
     def step(self, model, pt):

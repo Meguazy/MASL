@@ -206,7 +206,11 @@ def restore_periphery_agent(agent_data: Tuple):
         else:
             tc = TCell(uid[0], uid[2])
             agent_periphery_cache[uid] = tc
-            return tc
+        
+        # restore the agent state from the agent_data tuple
+        tc.is_activated = agent_data[1]
+        tc.is_dopamine_activated = agent_data[2]
+        return tc
     elif uid[1] == Antigen.TYPE:
         if uid in agent_periphery_cache:
             return agent_periphery_cache[uid]
@@ -253,6 +257,7 @@ class Neurons:
     """
     num_deads: int = 0
     num_alphas: int = 0
+    num_tcells: int = 0
 
 
 class BloodBrainBarrier():
@@ -516,7 +521,6 @@ class Model:
                 
         except:
             loguru.logger.error("Error in Levodopa conversion step")
-        loguru.logger.info(f"Dopamine effectiveness: {self.getDopamineEffectiveness()}")
 
 
     def run(self):
@@ -596,6 +600,7 @@ class Model:
 
         num_deads = 0
         num_alphas = 0
+        num_tcells = 0
         
         for ag in self.contexts["brain"].agents():
             pt = self.brain_grid.get_location(ag)
@@ -613,9 +618,16 @@ class Model:
                     self.microglia_status_data_set.log_row(tick, saved[0][0], saved[1], self.rank)
         
         for ag in self.contexts["peripheral"].agents():
+            saved = ag.save()
             pt = self.periphery_grid.get_location(ag)
             self.periphery_data_set.log_row(tick, ag.save()[0][0], ag.save()[0][1], pt.x, pt.y, self.rank)
 
+            if saved[0][1] == TCell.TYPE:
+                print(saved[1], saved[2])
+                if saved[1] or saved[2]:
+                    num_tcells += 1
+
+        self.neurons.num_tcells = num_tcells
         self.neurons.num_deads = num_deads
         self.neurons.num_alphas = num_alphas
         self.data_set.log(tick)

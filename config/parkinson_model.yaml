@@ -3,12 +3,12 @@ stop.at: 151
 neuron.perc: 5
 microglia.perc: 4
 astrocyte.perc: 13
-levodopa.perc: 15
+levodopa.perc: 0
 tcells.perc: 10
 th2.perc: 4
 th1.perc: 1
-carbidopa.effectiveness: 0.9
-dopamine.effectiveness: 0.5
+carbidopa.effectiveness: 0
+dopamine.effectiveness: 0
 world.width: 40
 world.height: 40
 run.number: 1

@@ -6,5 +6,5 @@ def plot_data(data: pd.DataFrame):
     plt.show()
 
 if __name__ == "__main__":
-    data = pd.read_csv("./counts/levo_carbo.csv", usecols=["num_deads", "num_alphas"])
+    data = pd.read_csv("./counts/NOlevo_NOcarbo.csv", usecols=["num_deads", "num_alphas", "num_tcells"])
     plot_data(data)
